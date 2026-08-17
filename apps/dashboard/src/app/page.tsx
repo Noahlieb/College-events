@@ -14,6 +14,8 @@ const STATUS_BADGE: Record<string, string> = {
   error: "badge-red",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
   const school = await getCurrentSchool();
 

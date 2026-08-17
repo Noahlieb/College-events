@@ -4,6 +4,8 @@ import { SOURCE_CATEGORIES, SOURCE_TYPES } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
 import { addSourceAction, toggleSourceActiveAction } from "@/lib/actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function SourcesPage() {
   const school = await getCurrentSchool();
   const rows = await db.select().from(sources).where(eq(sources.schoolId, school.id)).orderBy(desc(sources.priority));

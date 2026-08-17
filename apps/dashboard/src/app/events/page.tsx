@@ -20,6 +20,8 @@ const STATUS_BADGE: Record<string, string> = {
   rejected: "badge-red",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function EventsPage({
   searchParams,
 }: {

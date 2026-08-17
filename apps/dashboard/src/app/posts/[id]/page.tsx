@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { toDisplayUrl } from "@/lib/media";
 import { approvePostAction, rejectPostAction, renderPostAction, schedulePostAction } from "@/lib/actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);

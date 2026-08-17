@@ -21,6 +21,8 @@ const POST_TYPE_LABEL: Record<string, string> = {
   custom: "Custom",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function PostsPage() {
   const school = await getCurrentSchool();
 

@@ -4,6 +4,8 @@ import { EVENT_CATEGORIES } from "@college-events/core";
 import { mergeEventsAction, updateEventAction } from "@/lib/actions";
 import { notFound } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
