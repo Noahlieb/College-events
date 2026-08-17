@@ -1,0 +1,30 @@
+{
+  "name": "@college-events/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts demo",
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@college-events/ai": "workspace:*",
+    "@college-events/core": "workspace:*",
+    "@college-events/db": "workspace:*",
+    "@college-events/ingestion": "workspace:*",
+    "@college-events/render": "workspace:*",
+    "@college-events/scheduler": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "dotenv": "^16.4.5",
+    "date-fns-tz": "^3.2.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  }
+}
