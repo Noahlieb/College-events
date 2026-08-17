@@ -29,7 +29,7 @@ import {
   type WeeklyScheduleSlot,
 } from "@college-events/core";
 
-// ── enums ───────────────────────────────────────────────
+// ── enums ──────────────────────────────────────────────────────────
 export const sourceTypeEnum = pgEnum("source_type", SOURCE_TYPES);
 export const sourceCategoryEnum = pgEnum("source_category", SOURCE_CATEGORIES);
 export const eventCategoryEnum = pgEnum("event_category", EVENT_CATEGORIES);
@@ -40,7 +40,7 @@ export const postTypeEnum = pgEnum("post_type", POST_TYPES);
 export const postStatusEnum = pgEnum("post_status", POST_STATUSES);
 export const logLevelEnum = pgEnum("log_level", ["debug", "info", "warn", "error"]);
 
-// ── tenants ─────────────────────────────────────────────────────
+// ── tenants ────────────────────────────────────────────────────────
 export const schools = pgTable("schools", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -59,7 +59,7 @@ export const schools = pgTable("schools", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ── sources ───────────────────────────────────────────────────
+// ── sources ────────────────────────────────────────────────────────
 export const sources = pgTable("sources", {
   id: uuid("id").primaryKey().defaultRandom(),
   schoolId: uuid("school_id")
@@ -81,7 +81,7 @@ export const sources = pgTable("sources", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ── raw content (immutable discovery record) ──────────────────────────────────────
+// ── raw content (immutable discovery record) ──────────────────────
 export const rawContent = pgTable(
   "raw_content",
   {
@@ -112,7 +112,7 @@ export const rawContent = pgTable(
   }),
 );
 
-// ── normalized events ───────────────────────────────────────────────
+// ── normalized events ──────────────────────────────────────────────
 export const events = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),
   schoolId: uuid("school_id")
@@ -172,7 +172,7 @@ export const eventSources = pgTable(
   }),
 );
 
-// ── weekly posts (carousels) ──────────────────────────────────────────
+// ── weekly posts (carousels) ─────────────────────────────────────────
 export const posts = pgTable("posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   schoolId: uuid("school_id")

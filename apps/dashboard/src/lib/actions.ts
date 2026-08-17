@@ -7,7 +7,7 @@ import type { EventCategory, SourceCategory, SourceType } from "@college-events/
 import { getCurrentSchool } from "./current-school";
 import { runWorkerCommand } from "./run-worker-command";
 
-// ── event actions ─────────────────────────────────────────
+// ── event actions ────────────────────────────────────────────────────
 
 export async function approveEventAction(eventId: string) {
   await db.update(events).set({ status: "active", updatedAt: new Date() }).where(eq(events.id, eventId));
@@ -58,7 +58,7 @@ export async function mergeEventsAction(primaryEventId: string, formData: FormDa
   revalidatePath("/events");
 }
 
-// ── source actions ───────────────────────────────────
+// ── source actions ───────────────────────────────────────────────────
 
 export async function addSourceAction(formData: FormData) {
   const school = await getCurrentSchool();
@@ -80,7 +80,7 @@ export async function toggleSourceActiveAction(sourceId: string, active: boolean
   revalidatePath("/sources");
 }
 
-// ── post & pipeline actions ─────────────────────────────
+// ── post & pipeline actions ─────────────────────────────────────────────
 // These shell out to the worker CLI (see lib/run-worker-command.ts) rather
 // than importing the pipeline in-process: rendering pulls in sharp (a
 // native addon) which fights Next's server bundler, and it's the correct
