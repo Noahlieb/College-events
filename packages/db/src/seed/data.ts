@@ -84,6 +84,9 @@ function dt(date: string, startTime: string, endTime?: string) {
 export interface SeedEvent {
   key: string;
   sourceKeys: string[]; // one or more sources this event is corroborated by
+  /** Real direct link to this specific event (the CSV's own Link column) —
+   * used as the event's sourceUrl instead of a placeholder. */
+  link: string;
   name: string;
   description: string;
   date: string;
@@ -133,6 +136,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "soar_fair",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12555417",
     name: "SOAR Fair",
     description: "Free food & giveaways at the John D. MacArthur Campus Library.",
     date: "2026-08-19",
@@ -152,6 +156,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "womens_soccer_fsu",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-soccer/schedule",
     name: "Women's Soccer: FAU at Florida State",
     description: "Away match at Florida State.",
     date: "2026-08-20",
@@ -169,6 +174,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "mens_soccer_mercer",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/mens-soccer/schedule",
     name: "Men's Soccer: FAU at Mercer",
     description: "Away match at Mercer.",
     date: "2026-08-20",
@@ -186,6 +192,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "volleyball_miami_exhibition",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-volleyball/schedule",
     name: "Volleyball: FAU at Miami (Exhibition)",
     description: "Exhibition match at Miami.",
     date: "2026-08-22",
@@ -203,6 +210,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "welcome_library_first_day",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12559777",
     name: "Welcome to YOUR Library #FirstDay",
     description: "Giveaways & photo booth at S.E. Wimberly Library.",
     date: "2026-08-24",
@@ -222,6 +230,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "honors_welcome_ceremony",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12476975",
     name: "University Honors Students Welcome Ceremony",
     description: "Meet honors faculty on the Boca Raton campus.",
     date: "2026-08-24",
@@ -241,6 +250,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "hoots_birthday_party",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12429262",
     name: "Hoot's Birthday Party – Red & Blue Week",
     description: "DJ, cake, free food at Live Oak Pavilion, Student Union.",
     date: "2026-08-25",
@@ -260,6 +270,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "first_gen_welcome_reception",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12546824",
     name: "First-Generation Welcome Reception",
     description: "Free food & swag at the Grand Palm, Student Union.",
     date: "2026-08-25",
@@ -279,6 +290,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "naacp_general_body",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12537211",
     name: "NAACP General Body Meeting",
     description: "Mix & mingle, refreshments at FAU Student Union.",
     date: "2026-08-26",
@@ -298,6 +310,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "womens_soccer_howard",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-soccer/schedule",
     name: "Women's Soccer: FAU vs Howard",
     description: "Home match at FAU Soccer Stadium.",
     date: "2026-08-27",
@@ -316,6 +329,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "mens_soccer_north_florida",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/mens-soccer/schedule",
     name: "Men's Soccer: FAU vs North Florida",
     description: "Home match at FAU Soccer Stadium.",
     date: "2026-08-27",
@@ -334,6 +348,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "night_owls_meet_greet",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12523550",
     name: "Night Owls Meet and Greet",
     description: "Free snacks at The Burrow (Jupiter campus).",
     date: "2026-08-28",
@@ -353,6 +368,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "sparrow_rooftop_dj_night",
     sourceKeys: ["visit_lauderdale"],
+    link: "https://www.visitlauderdale.com/nightlife/",
     name: "Rooftop DJ Night",
     description: "Recurring Thursday–Saturday rooftop DJ night. 21+.",
     date: "2026-08-28",
@@ -373,6 +389,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "volleyball_merrimack",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-volleyball/schedule",
     name: "Volleyball: FAU vs Merrimack (FAU Invitational)",
     description: "Home match at Baldwin Arena.",
     date: "2026-08-28",
@@ -391,6 +408,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "volleyball_stetson",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-volleyball/schedule",
     name: "Volleyball: FAU vs Stetson (FAU Invitational)",
     description: "Home match at Baldwin Arena.",
     date: "2026-08-28",
@@ -409,6 +427,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "volleyball_fiu",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/womens-volleyball/schedule",
     name: "Volleyball: FAU vs FIU (FAU Invitational)",
     description: "Home match at Baldwin Arena.",
     date: "2026-08-29",
@@ -427,6 +446,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "sundays_on_the_river",
     sourceKeys: ["wharf_ftl"],
+    link: "https://wharfftl.com/events/",
     name: "Sundays on the River",
     description: "Recurring weekly live music at Riverwalk.",
     date: "2026-08-30",
@@ -446,6 +466,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "mens_soccer_nc_state",
     sourceKeys: ["fau_athletics"],
+    link: "https://fausports.com/sports/mens-soccer/schedule",
     name: "Men's Soccer: FAU vs No. 2 NC State",
     description: "Home match at FAU Soccer Stadium.",
     date: "2026-08-30",
@@ -464,6 +485,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "meet_soa_orgs",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12465427",
     name: "Meet the SOA Student Organizations",
     description: "Org mixer, free food on the Boca Raton campus.",
     date: "2026-08-31",
@@ -483,6 +505,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "noche_de_juegos",
     sourceKeys: ["owl_central"],
+    link: "https://fau.campuslabs.com/engage/event/12511040",
     name: "Noche de Juegos",
     description: "Games & laughter at FAU Boca Raton.",
     date: "2026-09-01",
@@ -502,6 +525,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "martini_thursdays",
     sourceKeys: ["wharf_ftl"],
+    link: "https://wharfftl.com/events/",
     name: "2-for-1 Martini Thursdays",
     description: "Recurring weekly. 21+.",
     date: "2026-09-03",
@@ -522,6 +546,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "elbo_room_live_music",
     sourceKeys: ["visit_lauderdale"],
+    link: "https://www.visitlauderdale.com/nightlife/",
     name: "Live Music on the Beach",
     description: "Recurring, barefoot bar on Fort Lauderdale Beach.",
     date: "2026-09-04",
@@ -541,6 +566,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "citizen_halcyon_blues",
     sourceKeys: ["revolution_live"],
+    link: "https://www.jointherevolution.net/concerts/",
     name: "Citizen: Halcyon Blues",
     description: "Concert, all ages, at Revolution Live.",
     date: "2026-09-05",
@@ -559,6 +585,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "nicko_mcbrain_titanium_tart",
     sourceKeys: ["culture_room"],
+    link: "https://www.cultureroom.net/",
     name: "Nicko McBrain's Titanium Tart (Iron Maiden)",
     description: "Concert at Culture Room.",
     date: "2026-09-05",
@@ -572,6 +599,65 @@ export const FAU_EVENTS: SeedEvent[] = [
     category: "concert",
     organization: "Culture Room",
     sourceImage: "https://placehold.co/600x400/6d28d9/ffffff?text=Nicko%2BMcBrain",
+    isCampusAffiliated: false,
+  },
+  {
+    key: "anthony_green",
+    sourceKeys: ["culture_room"],
+    link: "https://www.cultureroom.net/",
+    name: "Anthony Green – This Tour Won't Save You",
+    description: "Concert at Culture Room.",
+    date: "2026-08-19",
+    startTime: "19:00",
+    venue: "Culture Room",
+    address: "3045 N Federal Hwy, Fort Lauderdale, FL",
+    city: "Fort Lauderdale",
+    latitude: 26.1636,
+    longitude: -80.1256,
+    price: null,
+    category: "concert",
+    organization: "Culture Room",
+    sourceImage: "https://placehold.co/600x400/6d28d9/ffffff?text=Anthony%2BGreen",
+    isCampusAffiliated: false,
+  },
+  {
+    key: "thirsty_thursdays",
+    sourceKeys: ["visit_lauderdale"],
+    link: "https://www.visitlauderdale.com/nightlife/",
+    name: "Thirsty Thursdays (21+)",
+    description: "Recurring weekly at Tin Roof Fort Lauderdale.",
+    date: "2026-08-27",
+    startTime: "21:00",
+    venue: "Tin Roof Fort Lauderdale",
+    address: "Fort Lauderdale, FL",
+    city: "Fort Lauderdale",
+    latitude: 26.1195,
+    longitude: -80.1441,
+    price: null,
+    ageRequirement: "21+",
+    category: "nightlife",
+    organization: "Tin Roof Fort Lauderdale",
+    sourceImage: "https://placehold.co/600x400/6d28d9/ffffff?text=Thirsty%2BThursdays",
+    isCampusAffiliated: false,
+    isRecurring: true,
+  },
+  {
+    key: "jutes_culture_room",
+    sourceKeys: ["culture_room"],
+    link: "https://www.cultureroom.net/",
+    name: "Jutes",
+    description: "Concert at Culture Room.",
+    date: "2026-09-17",
+    startTime: "19:30",
+    venue: "Culture Room",
+    address: "3045 N Federal Hwy, Fort Lauderdale, FL",
+    city: "Fort Lauderdale",
+    latitude: 26.1636,
+    longitude: -80.1256,
+    price: null,
+    category: "concert",
+    organization: "Culture Room",
+    sourceImage: "https://placehold.co/600x400/6d28d9/ffffff?text=Jutes",
     isCampusAffiliated: false,
   },
 ];

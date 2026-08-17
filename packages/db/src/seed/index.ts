@@ -92,9 +92,9 @@ async function main() {
           schoolId: school.id,
           sourceId,
           externalId: `seed-${seed.key}-${sourceKey}`,
-          sourceUrl: `https://example.com/${sourceKey}/${seed.key}`,
+          sourceUrl: seed.link,
           rawText: seed.description,
-          mediaUrl: seed.sourceImage ? `https://example.com/media/${seed.sourceImage}` : null,
+          mediaUrl: seed.sourceImage,
           publishedAt: new Date(now.getTime() - (i + 1) * 3_600_000),
           processingStatus: "processed",
           rawMetadata: { seedEventKey: seed.key, observedStartAt: observedDates.startAt },
@@ -140,9 +140,9 @@ async function main() {
         category: seed.category,
         tags,
         organization: seed.organization,
-        sourceUrl: `https://example.com/${primaryRaw.sourceKey}/${seed.key}`,
+        sourceUrl: seed.link,
         sourceName: primarySource.name,
-        sourceImage: seed.sourceImage ? `https://example.com/media/${seed.sourceImage}` : null,
+        sourceImage: seed.sourceImage,
         originalRawContentId: primaryRaw.rawContentId,
         confidenceScore: seed.conflictingStartTime ? 0.55 : 0.92,
         fieldConfidence: {
@@ -168,7 +168,7 @@ async function main() {
         eventId: event.id,
         rawContentId: r.rawContentId,
         sourceId: r.sourceId,
-        sourceUrl: `https://example.com/${r.sourceKey}/${seed.key}`,
+        sourceUrl: seed.link,
       });
     }
 
