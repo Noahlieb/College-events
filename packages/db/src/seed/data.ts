@@ -48,6 +48,11 @@ export interface SeedSource {
   instagramHandle?: string;
   priority: number;
   scrapeFrequencyMinutes?: number;
+  /** Defaults to true. Instagram sources are seeded inactive since they need a live
+   * PhantomBuster agent to actually produce content — see README's PhantomBuster
+   * section. Everything driving the default demo/test data is a real pollable
+   * adapter (ical/rss/generic_webpage) instead. */
+  active?: boolean;
 }
 
 export const FAU_SOURCES: SeedSource[] = [
@@ -57,15 +62,15 @@ export const FAU_SOURCES: SeedSource[] = [
   { key: "fau_athletics", name: "FAU Athletics (fauowls.com)", sourceType: "athletics", category: "campus", url: "https://fauowls.com", priority: 9, scrapeFrequencyMinutes: 240 },
   { key: "fau_athletics_schedule", name: "FAU Athletics — Official Schedule Feed", sourceType: "ical", category: "campus", url: "https://fauowls.com/schedule.ics", priority: 9, scrapeFrequencyMinutes: 240 },
   { key: "fau_housing", name: "FAU Housing & Residential Life", sourceType: "generic_webpage", category: "campus", url: "https://www.fau.edu/housing/", priority: 5, scrapeFrequencyMinutes: 720 },
-  { key: "fau_sg_ig", name: "@fau_sg (Student Government)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fau_sg", priority: 6, scrapeFrequencyMinutes: 180 },
-  { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180 },
+  { key: "fau_sg_ig", name: "@fau_sg (Student Government)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fau_sg", priority: 6, scrapeFrequencyMinutes: 180, active: false },
+  { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180, active: false },
   // Nearby
   { key: "bounce_delray", name: "Bounce Delray Beach", sourceType: "venue_website", category: "nearby", url: "https://boundelray.com", priority: 6, scrapeFrequencyMinutes: 360 },
-  { key: "the_break_boca", name: "The Break Boca", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "thebreakboca", priority: 5, scrapeFrequencyMinutes: 360 },
+  { key: "the_break_boca", name: "The Break Boca", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "thebreakboca", priority: 5, scrapeFrequencyMinutes: 360, active: false },
   { key: "boca_downtown", name: "Downtown Boca Raton Events", sourceType: "generic_webpage", category: "nearby", url: "https://www.downtownboca.org/events", priority: 6, scrapeFrequencyMinutes: 720 },
   { key: "eventbrite_boca", name: "Eventbrite — Boca/Delray", sourceType: "eventbrite", category: "nearby", url: "https://www.eventbrite.com/d/fl--boca-raton/events/", priority: 4, scrapeFrequencyMinutes: 720 },
   { key: "miami_sports_rss", name: "South Florida Pro Sports RSS", sourceType: "rss", category: "nearby", url: "https://example.com/sfl-sports.rss", priority: 6, scrapeFrequencyMinutes: 720 },
-  { key: "ftl_promoter_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360 },
+  { key: "ftl_promoter_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
   // Utility source manual entries attach to — treated as authoritative since a human verified the details.
   { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
 ];
@@ -103,7 +108,7 @@ export interface SeedEvent {
 export const FAU_EVENTS: SeedEvent[] = [
   {
     key: "involvement_fair",
-    sourceKeys: ["owl_central", "fau_union_ig"], // appears on 2 sources -> merges + VERIFIED
+    sourceKeys: ["owl_central", "student_union"], // appears on 2 public sources -> merges + VERIFIED
     name: "FAU Fall Involvement Fair",
     description: "Meet 100+ student organizations, grab free swag, and sign up for clubs at the Student Union Breezeway.",
     date: "2026-08-24",
@@ -318,7 +323,7 @@ export const FAU_EVENTS: SeedEvent[] = [
   },
   {
     key: "delray_bar_crawl",
-    sourceKeys: ["ftl_promoter_ig"],
+    sourceKeys: ["eventbrite_boca"],
     name: "Downtown Delray Bar Crawl",
     description: "Hit five bars along Atlantic Ave with one wristband. DJs, drink specials, and photo ops all night.",
     date: "2026-08-29",
@@ -391,21 +396,21 @@ export const FAU_PENDING_RAW_CONTENT: SeedRawContent[] = [
     publishedAt: "2026-08-14T18:30:00.000Z",
   },
   {
-    key: "pending_union_ig_giveaway",
-    sourceKey: "fau_union_ig",
-    externalId: "ig-fauunion-postid-3021",
-    sourceUrl: "https://instagram.com/p/fauunion-3021",
+    key: "pending_union_giveaway",
+    sourceKey: "student_union",
+    externalId: "fau-studentunion-post-3021",
+    sourceUrl: "https://www.fau.edu/studentunion/news/ice-cream-social",
     rawText:
-      "Free ice cream social this Friday 8/28 at 2pm outside the Student Union! Come cool off before the weekend 🍦",
+      "Free ice cream social this Friday 8/28 at 2pm outside the Student Union! Come cool off before the weekend.",
     mediaUrl: "https://example.com/media/ice-cream-social.jpg",
     publishedAt: "2026-08-16T13:00:00.000Z",
   },
   {
     key: "pending_promoter_generic_post",
-    sourceKey: "ftl_promoter_ig",
-    externalId: "ig-soflanightlife-postid-9981",
-    sourceUrl: "https://instagram.com/p/soflanightlife-9981",
-    rawText: "link in bio for tickets 🔥🔥🔥 you don't want to miss this one",
+    sourceKey: "eventbrite_boca",
+    externalId: "eventbrite-boca-listing-9981",
+    sourceUrl: "https://www.eventbrite.com/e/9981",
+    rawText: "Tickets on sale now. You don't want to miss this one.",
     mediaUrl: "https://example.com/media/generic-promo.jpg",
     publishedAt: "2026-08-16T20:00:00.000Z",
   },

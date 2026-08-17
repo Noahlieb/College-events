@@ -33,6 +33,7 @@ async function main() {
         url: s.url ?? null,
         instagramHandle: s.instagramHandle ?? null,
         priority: s.priority,
+        active: s.active ?? true,
         scrapeFrequencyMinutes: s.scrapeFrequencyMinutes ?? 360,
       })
       .returning();

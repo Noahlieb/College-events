@@ -176,6 +176,14 @@ nightlife event, a game with two sources reporting different kickoff times
 (`CONFLICT`), an event with no image, an expired event, and a low-relevance distant
 networking event.
 
+The 4 Instagram-type sources are seeded with `active: false` — they need a live
+PhantomBuster agent to produce anything (see below), so by default they just sit
+in the `sources` table as inactive rows for UI/architecture completeness. Every
+event and pending `raw_content` row that actually drives the demo/test run is
+attributed to a real pollable source type instead (`owl_central`, `ical`, `rss`,
+`generic_webpage`, `venue_website`, `athletics`, `eventbrite`) — i.e. `pnpm demo`
+exercises the system entirely on public-web-shaped data, no PhantomBuster required.
+
 ## Running the pipeline
 
 Everything below is a subcommand of the worker CLI (`pnpm --filter
