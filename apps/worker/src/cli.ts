@@ -11,6 +11,7 @@ import { schedulePost } from "./pipeline/schedule.js";
 import { importPhantomBusterResults } from "./pipeline/phantombuster.js";
 import { runLivePhantomBusterIngest } from "./pipeline/phantombuster-live.js";
 import { submitManualEvent } from "./pipeline/manual.js";
+import { importCsvEvents } from "./pipeline/csv-import.js";
 import { runDemo } from "./demo.js";
 import { eq } from "drizzle-orm";
 import { db, sources } from "@college-events/db";
@@ -33,6 +34,8 @@ Commands:
   reject <postId> <reason> <rejectedBy>    Reject a post
   schedule <postId>                        Send an approved post to the scheduler (Buffer/mock)
   manual-entry <school> <file>             Submit a manually-entered event from a JSON file
+  import-csv <school> <file> [submittedBy] Bulk-import events from a CSV (Date, Time, Category,
+                                            Event, Presenter/Team, Venue, Notes, Image URL, Link)
   demo [school]                            Run the full pipeline end-to-end (defaults to FAU)
 
 [school] defaults to "FAU" and refers to schools.short_name.
@@ -115,6 +118,15 @@ async function main() {
       const input = JSON.parse(await fs.readFile(file, "utf-8"));
       const result = await submitManualEvent(schoolId, manualSource.id, input);
       console.log(result);
+      break;
+    }
+    case "import-csv": {
+      const [school, file, submittedBy] = args;
+      if (!school || !file) throw new Error("Usage: import-csv <school> <file> [submittedBy]");
+      const schoolId = await resolveSchoolId(school);
+      const csvText = await fs.readFile(file, "utf-8");
+      const summary = await importCsvEvents(schoolId, csvText, submittedBy);
+      console.log(JSON.stringify(summary));
       break;
     }
     case "demo": {

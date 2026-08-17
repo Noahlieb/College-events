@@ -5,4 +5,6 @@ export * from "./jsonld.js";
 export * from "./phantombuster.js";
 export * from "./phantombuster-client.js";
 export * from "./manual.js";
+export * from "./csv.js";
+export * from "./csv-events.js";
 export * from "./registry.js";

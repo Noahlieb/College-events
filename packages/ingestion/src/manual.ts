@@ -13,6 +13,16 @@ export interface ManualEventInput {
   sourceUrl: string | null;
   category: EventCategory;
   submittedBy: string;
+  /** Optional richer fields a bulk source (e.g. a CSV import) may already
+   * know and a one-off manual entry usually doesn't — all default to the
+   * previous manual-entry behavior when omitted, so existing callers are
+   * unaffected. */
+  organization?: string | null;
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  ageRequirement?: string | null;
+  isRecurring?: boolean;
 }
 
 /**

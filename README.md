@@ -219,6 +219,10 @@ pnpm worker schedule <postId>
 # AI extraction step itself is skipped, since the fields are already known.
 pnpm worker manual-entry [school] path/to/event.json
 
+# Bulk import from a CSV — same idea as manual-entry, looped over many
+# structured rows. See "CSV import" below for the expected columns.
+pnpm worker import-csv [school] path/to/events.csv [submittedBy]
+
 # The whole thing end-to-end, for demos:
 pnpm demo
 ```
@@ -249,6 +253,36 @@ intentionally not implemented as a fallback (spec §9's explicit "don't rely on
 brittle browser scraping" guidance); a page with no structured data simply yields
 zero discovered items rather than erroring.
 
+### CSV import
+
+`pnpm worker import-csv [school] <file> [submittedBy]`, or the dashboard's **Import
+CSV** page, bulk-adds events from a spreadsheet export. Each row is mapped to a
+`ManualEventInput` (`packages/ingestion/src/csv-events.ts`) and run through
+`submitManualEvent()` — the exact same scoring, dedup-against-existing-events, and
+verification logic a single manual entry uses, just looped over many rows attached
+to the school's `manual_submission` utility source. A bad row (missing name, an
+unparseable date/time) is skipped with a reason rather than failing the whole
+upload.
+
+Column names are matched case-insensitively, and only Date/Time/Event are required:
+
+| Column | Required | Format |
+|---|---|---|
+| Date | yes | `YYYY-MM-DD` |
+| Time (ET) | yes | `9:00 AM` or `9:00 AM–11:00 AM` |
+| Event | yes | event name |
+| Category | no | one of `packages/core`'s `EVENT_CATEGORIES`, else a keyword guess from the name/notes |
+| Presenter/Team | no | organization — also used to detect campus affiliation |
+| Venue | no | `Venue Name, City` |
+| Notes | no | free text — `21+` and `Recurring` are detected automatically |
+| Image URL | no | stored as `sourceImage`; renders once image fetching has real network access |
+| Link | no | the event's own page, stored as its source link |
+
+No geocoding step exists yet, so distance-based scoring falls back to a small
+known-city lookup table (`apps/worker/src/lib/geo-heuristic.ts`) rather than exact
+coordinates — a real geocoder is a natural post-MVP upgrade, same as for
+AI-extracted events.
+
 ## The admin dashboard
 
 ```bash
@@ -266,6 +300,13 @@ pnpm dashboard   # http://localhost:3000, HTTP Basic Auth via ADMIN_USERNAME/PAS
 - **Sources** — table of every configured source with health status, plus an
   "Add source" form. This is the page a VA maintains sources through — no code
   changes needed to add a new venue/account/calendar.
+- **Import CSV** — upload a spreadsheet of events (see "CSV import" above); shows
+  a summary of what was created vs. merged vs. skipped after each upload.
+
+Each event row in the Events tab shows its `sourceImage` as a thumbnail — a plain
+`<img>` fetched by the viewer's own browser, so it renders normally in any real
+deployment even though rendering the branded carousel (a server-side fetch,
+composited via `sharp`) is a separate step with separate network requirements.
 
 Rendering and every pipeline-triggering action run as a **worker CLI subprocess**,
 not in-process inside the Next.js server. This is a deliberate boundary, not just a

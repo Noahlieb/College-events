@@ -47,14 +47,28 @@ export async function submitManualEvent(
   if (!raw) throw new Error("Failed to insert manual raw_content");
 
   const category: EventCategory = input.category;
-  const distanceMiles = estimateDistanceMiles(input.venue, school.city); // best-effort; venue text rarely names a city directly
+  // A caller that already knows the city (e.g. a CSV import) gets a real
+  // lookup; plain manual entries fall back to the previous best-effort
+  // guess from the venue text (which rarely names a city directly).
+  const distanceMiles = estimateDistanceMiles(input.city ?? input.venue, school.city);
   const daysOut = daysUntil(parsedDates.startAt, school.timezone);
+  // Deliberately does NOT reuse the source-category shortcut from
+  // isCampusAffiliated() in geo-heuristic.ts: the "Manual Entry" utility
+  // source is always category "campus", which would mark every row —
+  // including an off-campus nightlife venue from a CSV import — as
+  // campus-affiliated regardless of its actual organization. Matching on
+  // the organization name itself is the honest signal here.
+  const org = input.organization?.toLowerCase();
+  const isCampusAffiliated = org
+    ? org.includes(school.shortName.toLowerCase()) || org.includes(school.name.toLowerCase())
+    : true; // no organization info -> assume our own team/VA reviewed it, same as before
   const bucketScores = scoreEvent({
     category,
     distanceMiles,
     priceText: input.price,
-    isCampusAffiliated: true, // manual entries are submitted by our own team/VA reviewing a real source
+    isCampusAffiliated,
     daysUntilStart: daysOut,
+    isRecurring: input.isRecurring ?? false,
   });
 
   const windowStart = new Date(new Date(parsedDates.startAt).getTime() - 30 * 3600_000);
@@ -94,10 +108,14 @@ export async function submitManualEvent(
       startAt: new Date(parsedDates.startAt),
       endAt: parsedDates.endAt ? new Date(parsedDates.endAt) : null,
       venue: input.venue,
+      city: input.city ?? null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
       price: input.price,
+      ageRequirement: input.ageRequirement ?? null,
       category,
       tags: [category],
-      organization: null,
+      organization: input.organization ?? null,
       sourceUrl: input.sourceUrl,
       sourceName: `Manual entry (${input.submittedBy})`,
       sourceImage: input.flyerUrl,
