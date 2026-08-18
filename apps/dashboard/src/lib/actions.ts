@@ -147,11 +147,12 @@ export async function importCsvAction(formData: FormData) {
     redirect("/import?error=" + encodeURIComponent("Choose a CSV file first."));
   }
   const submittedBy = String(formData.get("submittedBy") || "dashboard-upload").trim() || "dashboard-upload";
+  const sourceName = String(formData.get("sourceName") || "").trim() || undefined;
   const text = await (file as File).text();
 
   let summary: Awaited<ReturnType<typeof importCsvEvents>>;
   try {
-    summary = await importCsvEvents(school.id, text, submittedBy);
+    summary = await importCsvEvents(school.id, text, submittedBy, sourceName);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     redirect("/import?error=" + encodeURIComponent(message.slice(0, 500)));

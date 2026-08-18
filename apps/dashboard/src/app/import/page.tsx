@@ -1,3 +1,6 @@
+import { and, asc, eq } from "drizzle-orm";
+import { db, sources } from "@college-events/db";
+import { getCurrentSchool } from "@/lib/current-school";
 import { importCsvAction } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +27,16 @@ export default async function ImportPage({
       // fall through — malformed result is treated the same as no result
     }
   }
+
+  const school = await getCurrentSchool();
+  // Ordered to match importCsvEvents()'s own fallback (apps/worker/src/pipeline/csv-import.ts) —
+  // the oldest manual_submission source is what actually gets used when sourceName is omitted,
+  // so the "Default" label below has to reflect that same ordering, not an arbitrary one.
+  const manualSources = await db
+    .select()
+    .from(sources)
+    .where(and(eq(sources.schoolId, school.id), eq(sources.sourceType, "manual_submission")))
+    .orderBy(asc(sources.createdAt));
 
   return (
     <>
@@ -94,6 +107,19 @@ export default async function ImportPage({
           <input type="file" name="csvFile" accept=".csv" required />
           <label>Submitted by (optional)</label>
           <input type="text" name="submittedBy" placeholder="your name or team" />
+          {manualSources.length > 1 && (
+            <>
+              <label>Source</label>
+              <select name="sourceName" defaultValue="">
+                <option value="">Default ({manualSources[0]!.name})</option>
+                {manualSources.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <div style={{ marginTop: 14 }}>
             <button className="btn btn-primary" type="submit">
               Import CSV
@@ -161,7 +187,7 @@ export default async function ImportPage({
               <tr>
                 <td>Image URL</td>
                 <td>No</td>
-                <td>used as the event photo once rendering has real network access</td>
+                <td>used as the event photo, both in the Events tab preview and the rendered carousel</td>
               </tr>
               <tr>
                 <td>Link</td>
