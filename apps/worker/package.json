@@ -18,6 +18,7 @@
     "@college-events/ingestion": "workspace:*",
     "@college-events/render": "workspace:*",
     "@college-events/scheduler": "workspace:*",
+    "@supabase/supabase-js": "^2.46.1",
     "drizzle-orm": "^0.36.4",
     "dotenv": "^16.4.5",
     "date-fns-tz": "^3.2.0"

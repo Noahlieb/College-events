@@ -18,5 +18,10 @@
     "worker": "pnpm --filter @college-events/worker start",
     "dashboard": "pnpm --filter @college-events/dashboard dev",
     "demo": "pnpm --filter @college-events/worker demo"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.33.5"
+    }
   }
 }

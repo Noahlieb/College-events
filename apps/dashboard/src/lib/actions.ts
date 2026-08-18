@@ -2,14 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { db, events, eventSources, sources } from "@college-events/db";
 import type { EventCategory, SourceCategory, SourceType } from "@college-events/core";
+import {
+  approvePost,
+  rejectPost,
+  renderPost,
+  schedulePost,
+  processSchoolRawContent,
+  selectWeeklyPosts,
+  importCsvEvents,
+} from "@college-events/worker";
 import { getCurrentSchool } from "./current-school";
-import { runWorkerCommand } from "./run-worker-command";
 
 // ── event actions ────────────────────────────────────────────────────
 
@@ -85,46 +90,46 @@ export async function toggleSourceActiveAction(sourceId: string, active: boolean
 }
 
 // ── post & pipeline actions ─────────────────────────────────────────────
-// These shell out to the worker CLI (see lib/run-worker-command.ts) rather
-// than importing the pipeline in-process: rendering pulls in sharp (a
-// native addon) which fights Next's server bundler, and it's the correct
-// architectural boundary anyway — the dashboard triggers jobs, the worker
-// process executes them, same as an n8n-triggered run would.
+// Call the worker's pipeline functions in-process rather than shelling out
+// to the worker CLI. sharp (pulled in via renderPost) is kept out of
+// Next's webpack bundle via serverExternalPackages in next.config.js —
+// see that file for why — so this works on Vercel's serverless runtime,
+// which can't spawn a pnpm subprocess the way local dev could.
 
 export async function approvePostAction(postId: string) {
-  await runWorkerCommand("approve", postId, "dashboard-admin");
+  await approvePost(postId, "dashboard-admin");
   revalidatePath("/posts");
   revalidatePath(`/posts/${postId}`);
 }
 
 export async function rejectPostAction(postId: string, formData: FormData) {
   const reason = String(formData.get("reason") ?? "") || "rejected from dashboard";
-  await runWorkerCommand("reject", postId, reason, "dashboard-admin");
+  await rejectPost(postId, reason, "dashboard-admin");
   revalidatePath("/posts");
   revalidatePath(`/posts/${postId}`);
 }
 
 export async function renderPostAction(postId: string) {
-  await runWorkerCommand("render", postId);
+  await renderPost(postId);
   revalidatePath(`/posts/${postId}`);
 }
 
 export async function schedulePostAction(postId: string) {
-  await runWorkerCommand("schedule", postId);
+  await schedulePost(postId);
   revalidatePath("/posts");
   revalidatePath(`/posts/${postId}`);
 }
 
 export async function runProcessAction() {
   const school = await getCurrentSchool();
-  await runWorkerCommand("process", school.shortName);
+  await processSchoolRawContent(school.id);
   revalidatePath("/");
   revalidatePath("/events");
 }
 
 export async function runSelectPostsAction() {
   const school = await getCurrentSchool();
-  await runWorkerCommand("select-posts", school.shortName);
+  await selectWeeklyPosts(school.id);
   revalidatePath("/posts");
 }
 
@@ -132,10 +137,9 @@ export async function runSelectPostsAction() {
 // A CSV of already-structured events (Date, Time, Category, Event,
 // Presenter/Team, Venue, Notes, Image URL, Link) is bulk-submitted through
 // the same submitManualEvent() path a single manual entry uses — see
-// apps/worker/src/pipeline/csv-import.ts. Runs through the worker
-// subprocess like every other pipeline action (see run-worker-command.ts);
-// the upload itself has to hit disk first since the worker CLI takes a
-// file path, not stdin.
+// apps/worker/src/pipeline/csv-import.ts. Called in-process directly on
+// the uploaded text — no temp file needed now that this doesn't go through
+// a CLI, which is the one part that actually got simpler from this refactor.
 export async function importCsvAction(formData: FormData) {
   const school = await getCurrentSchool();
   const file = formData.get("csvFile");
@@ -143,30 +147,17 @@ export async function importCsvAction(formData: FormData) {
     redirect("/import?error=" + encodeURIComponent("Choose a CSV file first."));
   }
   const submittedBy = String(formData.get("submittedBy") || "dashboard-upload").trim() || "dashboard-upload";
-
   const text = await (file as File).text();
-  const tmpPath = path.join(os.tmpdir(), `csv-import-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
-  await fs.writeFile(tmpPath, text, "utf-8");
 
-  let stdout: string;
+  let summary: Awaited<ReturnType<typeof importCsvEvents>>;
   try {
-    stdout = await runWorkerCommand("import-csv", school.shortName, tmpPath, submittedBy);
+    summary = await importCsvEvents(school.id, text, submittedBy);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     redirect("/import?error=" + encodeURIComponent(message.slice(0, 500)));
-  } finally {
-    await fs.unlink(tmpPath).catch(() => {});
-  }
-
-  const jsonLine = stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.startsWith("{") && l.endsWith("}"));
-  if (!jsonLine) {
-    redirect("/import?error=" + encodeURIComponent("Import ran but produced no summary — check the worker logs."));
   }
 
   revalidatePath("/events");
   revalidatePath("/");
-  redirect("/import?result=" + encodeURIComponent(jsonLine));
+  redirect("/import?result=" + encodeURIComponent(JSON.stringify(summary)));
 }
