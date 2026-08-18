@@ -63,23 +63,33 @@ export interface SeedSource {
  * campus events, fausports.com for every athletics fixture (home and
  * away), and each nightlife venue's own site otherwise.
  */
+// FAU's live event data comes from exactly three sources, each fed by a
+// scraper the user built and runs on their own machine via daily cron —
+// everything else below is seeded inactive: kept for reference/rollback
+// (a one-click re-enable on the Sources page) rather than deleted outright.
 export const FAU_SOURCES: SeedSource[] = [
-  { key: "owl_central", name: "Owl Central", sourceType: "owl_central", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240 },
+  // The 3 active sources — do not flip these to active:false.
   { key: "fau_athletics", name: "FAU Athletics (fausports.com)", sourceType: "athletics", category: "campus", url: "https://fausports.com", priority: 9, scrapeFrequencyMinutes: 240 },
-  { key: "culture_room", name: "Culture Room", sourceType: "venue_website", category: "nearby", url: "https://www.cultureroom.net/", priority: 6, scrapeFrequencyMinutes: 720 },
-  { key: "wharf_ftl", name: "The Wharf Fort Lauderdale", sourceType: "venue_website", category: "nearby", url: "https://wharfftl.com/events/", priority: 5, scrapeFrequencyMinutes: 720 },
-  { key: "revolution_live", name: "Revolution Live", sourceType: "venue_website", category: "nearby", url: "https://www.jointherevolution.net/concerts/", priority: 5, scrapeFrequencyMinutes: 720 },
-  { key: "visit_lauderdale", name: "Visit Lauderdale — Nightlife Guide", sourceType: "generic_webpage", category: "nearby", url: "https://www.visitlauderdale.com/nightlife/", priority: 4, scrapeFrequencyMinutes: 720 },
+  // Fed by an external daily scraper (scrape_owlcentral.py, run outside this repo) hitting Owl
+  // Central's JSON API and importing via `import-csv ... --source="Owl Central (CSV Import)"` —
+  // kept separate from the native ical owl_central source below (which polls the .ics feed
+  // directly, and is inactive) since the JSON API carries richer fields and isn't page-capped.
+  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
+  // Fed by an external daily scraper (scrape_posh.py, run outside this repo) via
+  // `import-csv ... --source="Posh.vip Nightlife"`.
+  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440 },
+
+  // Inactive — superseded by the 3 sources above, kept for reference/rollback.
+  { key: "owl_central", name: "Owl Central", sourceType: "owl_central", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240, active: false },
+  { key: "culture_room", name: "Culture Room", sourceType: "venue_website", category: "nearby", url: "https://www.cultureroom.net/", priority: 6, scrapeFrequencyMinutes: 720, active: false },
+  { key: "wharf_ftl", name: "The Wharf Fort Lauderdale", sourceType: "venue_website", category: "nearby", url: "https://wharfftl.com/events/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
+  { key: "revolution_live", name: "Revolution Live", sourceType: "venue_website", category: "nearby", url: "https://www.jointherevolution.net/concerts/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
+  { key: "visit_lauderdale", name: "Visit Lauderdale — Nightlife Guide", sourceType: "generic_webpage", category: "nearby", url: "https://www.visitlauderdale.com/nightlife/", priority: 4, scrapeFrequencyMinutes: 720, active: false },
   { key: "fau_sg_ig", name: "@fau_sg (Student Government)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fau_sg", priority: 6, scrapeFrequencyMinutes: 180, active: false },
   { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180, active: false },
   { key: "sofla_nightlife_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
   // Utility source manual entries attach to — treated as authoritative since a human verified the details.
-  { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
-  // Fed by an external daily scraper (scrape_owlcentral.py, run outside this repo) hitting Owl
-  // Central's JSON API and importing via `import-csv ... --source="Owl Central (CSV Import)"` —
-  // kept separate from the native ical owl_central source above (which polls the .ics feed
-  // directly) since the JSON API carries richer fields and isn't page-capped.
-  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
+  { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0, active: false },
 ];
 
 function dt(date: string, startTime: string, endTime?: string) {
