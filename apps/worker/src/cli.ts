@@ -34,8 +34,12 @@ Commands:
   reject <postId> <reason> <rejectedBy>    Reject a post
   schedule <postId>                        Send an approved post to the scheduler (Buffer/mock)
   manual-entry <school> <file>             Submit a manually-entered event from a JSON file
-  import-csv <school> <file> [submittedBy] Bulk-import events from a CSV (Date, Time, Category,
-                                            Event, Presenter/Team, Venue, Notes, Image URL, Link)
+  import-csv <school> <file> [submittedBy] [--source="Name"]
+                                            Bulk-import events from a CSV (Date, Time, Category,
+                                            Event, Presenter/Team, Venue, Notes, Image URL, Link).
+                                            --source attributes rows to a specific manual_submission
+                                            source by exact name (must already exist); omit to use
+                                            the school's oldest manual_submission source.
   demo [school]                            Run the full pipeline end-to-end (defaults to FAU)
 
 [school] defaults to "FAU" and refers to schools.short_name.
@@ -121,11 +125,19 @@ async function main() {
       break;
     }
     case "import-csv": {
-      const [school, file, submittedBy] = args;
-      if (!school || !file) throw new Error("Usage: import-csv <school> <file> [submittedBy]");
+      const positional: string[] = [];
+      let sourceName: string | undefined;
+      for (const arg of args) {
+        if (arg.startsWith("--source=")) sourceName = arg.slice("--source=".length);
+        else positional.push(arg);
+      }
+      const [school, file, submittedBy] = positional;
+      if (!school || !file) {
+        throw new Error('Usage: import-csv <school> <file> [submittedBy] [--source="Source Name"]');
+      }
       const schoolId = await resolveSchoolId(school);
       const csvText = await fs.readFile(file, "utf-8");
-      const summary = await importCsvEvents(schoolId, csvText, submittedBy);
+      const summary = await importCsvEvents(schoolId, csvText, submittedBy, sourceName);
       console.log(JSON.stringify(summary));
       break;
     }

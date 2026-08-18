@@ -75,6 +75,11 @@ export const FAU_SOURCES: SeedSource[] = [
   { key: "sofla_nightlife_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
   // Utility source manual entries attach to — treated as authoritative since a human verified the details.
   { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
+  // Fed by an external daily scraper (scrape_owlcentral.py, run outside this repo) hitting Owl
+  // Central's JSON API and importing via `import-csv ... --source="Owl Central (CSV Import)"` —
+  // kept separate from the native ical owl_central source above (which polls the .ics feed
+  // directly) since the JSON API carries richer fields and isn't page-capped.
+  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
 ];
 
 function dt(date: string, startTime: string, endTime?: string) {
