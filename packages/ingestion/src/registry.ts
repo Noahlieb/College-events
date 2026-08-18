@@ -3,8 +3,15 @@ import type { SourceAdapter } from "./types.js";
 import { owlCentralAdapter, icalAdapter } from "./ical.js";
 import { rssAdapter } from "./rss.js";
 import { genericWebpageAdapter } from "./jsonld.js";
+import { sidearmAthleticsAdapter } from "./sidearm.js";
 
-const ADAPTERS: SourceAdapter[] = [owlCentralAdapter, icalAdapter, rssAdapter, genericWebpageAdapter];
+const ADAPTERS: SourceAdapter[] = [
+  owlCentralAdapter,
+  icalAdapter,
+  rssAdapter,
+  sidearmAthleticsAdapter,
+  genericWebpageAdapter,
+];
 
 /**
  * Looks up the polling adapter for a source type. Instagram sources are

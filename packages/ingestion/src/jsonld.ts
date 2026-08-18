@@ -100,15 +100,18 @@ function toDiscoveredItem(node: JsonLdEventLike, pageUrl: string): DiscoveredIte
 }
 
 /** Generic webpage adapter: fetches a page and extracts schema.org Event
- * JSON-LD. Covers venue_website, ticketing_website, eventbrite, athletics,
- * and generic_webpage source types — those platforms overwhelmingly ship
- * JSON-LD for SEO, so a single adapter serves all of them. Falls back to
- * an empty result (not an error) when a page has no JSON-LD Event data;
+ * JSON-LD. Covers venue_website, ticketing_website, eventbrite, and
+ * generic_webpage source types — those platforms overwhelmingly ship
+ * JSON-LD for SEO, so a single adapter serves all of them. `athletics` is
+ * handled by sidearm.ts instead: SIDEARM Sports sites (the dominant NCAA
+ * athletics site vendor, FAU included) ship zero JSON-LD, rendering
+ * schedules client-side from an embedded Nuxt payload instead. Falls back
+ * to an empty result (not an error) when a page has no JSON-LD Event data;
  * true last-resort HTML scraping is intentionally out of scope for the
  * MVP per spec §9 ("do not rely on brittle browser scraping").
  */
 export const genericWebpageAdapter: SourceAdapter = {
-  supportedTypes: ["generic_webpage", "venue_website", "ticketing_website", "eventbrite", "athletics"],
+  supportedTypes: ["generic_webpage", "venue_website", "ticketing_website", "eventbrite"],
   async fetchNew(ctx: FetchContext): Promise<DiscoveredItem[]> {
     if (!ctx.source.url) {
       throw new IngestionError("Webpage source has no URL configured", ctx.source.id);
