@@ -50,11 +50,31 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           </form>
         </div>
         {assets.length > 0 ? (
-          <div className="carousel">
-            {assets.map((a) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={a.id} src={toDisplayUrl(a.storageUrl)} alt={a.template} />
+          <div className="preview-layout">
+            {assets.map((a, i) => (
+              <input
+                key={`r-${a.id}`}
+                type="radio"
+                name="slide"
+                id={`slide-${i}`}
+                className="slide-radio-hidden"
+                defaultChecked={i === 0}
+              />
             ))}
+            <div className="slide-stage">
+              {assets.map((a) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={a.id} src={toDisplayUrl(a.storageUrl)} alt={a.template} className="slide-image" />
+              ))}
+            </div>
+            <div className="carousel-thumbs">
+              {assets.map((a, i) => (
+                <label key={a.id} htmlFor={`slide-${i}`} className="thumb-label">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={toDisplayUrl(a.storageUrl)} alt={a.template} />
+                </label>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="empty">Not rendered yet. Click "Render" to generate the carousel images.</div>
@@ -63,12 +83,10 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
 
       <div className="grid-2">
         <div className="panel">
-          <div className="panel-header">
-            <h2 style={{ margin: 0 }}>Caption</h2>
-          </div>
-          <pre style={{ padding: 16, whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13 }}>
-            {post.caption ?? "(no caption generated yet)"}
-          </pre>
+          <details className="caption-box">
+            <summary>Caption{post.caption ? ` — ${post.caption.length} characters, click to expand` : ""}</summary>
+            <pre>{post.caption ?? "(no caption generated yet)"}</pre>
+          </details>
         </div>
 
         <div className="panel">
