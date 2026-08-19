@@ -106,10 +106,13 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
               {linkedEvents.map(({ event }, i) => (
                 <tr key={event.id}>
                   <td>{i + 1}</td>
-                  <td>
-                    <a href={`/events/${event.id}`}>{event.name}</a>
-                  </td>
+                  <td>{event.name}</td>
                   <td style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(event.startAt).toLocaleDateString()}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <a href={`/events/${event.id}?postId=${post.id}`} className="btn btn-sm">
+                      Edit text
+                    </a>
+                  </td>
                 </tr>
               ))}
               {linkedEvents.length === 0 && (

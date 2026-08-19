@@ -6,8 +6,15 @@ import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EventDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ postId?: string }>;
+}) {
   const { id } = await params;
+  const { postId } = await searchParams;
   const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);
   if (!event) notFound();
 
@@ -30,7 +37,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   return (
     <>
       <p>
-        <a href="/events">← back to events</a>
+        {postId ? <a href={`/posts/${postId}`}>← back to post</a> : <a href="/events">← back to events</a>}
       </p>
       <h1>{event.name}</h1>
       <p className="subtitle">
@@ -55,6 +62,17 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           <div className="panel-header">
             <h2 style={{ margin: 0 }}>Edit event</h2>
           </div>
+          <p style={{ padding: "0 16px", margin: "12px 0 0", fontSize: 12, color: "var(--muted)" }}>
+            Name, venue, price, and description are exactly what's printed on the rendered slide image. After saving,{" "}
+            {postId ? (
+              <>
+                go <a href={`/posts/${postId}`}>back to the post</a> and click <strong>Re-render</strong> to regenerate
+                the image with the updated text.
+              </>
+            ) : (
+              <>re-render any post using this event to see the updated text on the image.</>
+            )}
+          </p>
           <form action={updateEventAction.bind(null, event.id)} style={{ padding: 16 }}>
             <label>Name</label>
             <input name="name" defaultValue={event.name} />
