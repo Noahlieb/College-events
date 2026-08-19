@@ -1,17 +1,36 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-// Deliberately isolated in its own file, imported only by the one page that
-// needs it (/posts/[id]) — renderPost pulls in sharp (a native addon)
-// transitively via @college-events/render. That dependency is confined to
-// this one route on purpose: every other dashboard action (approve, reject,
-// schedule, CSV import, etc.) is defined in actions.ts and never touches
-// sharp at all, so a problem specific to rendering can't take down routes
-// that have nothing to do with it. See actions.ts's top-of-file comment for
-// the full story of why that separation matters on Vercel specifically.
-import { renderPost } from "@college-events/worker/dist/pipeline/render.js";
 
+/**
+ * Calls the standalone render-service Vercel Function over HTTP rather than
+ * importing renderPost directly — see apps/render-service/api/render.ts for
+ * why: sharp (a native addon pulled in transitively via
+ * @college-events/render) could not be reliably bundled inside this
+ * Next.js app's serverless output on Vercel after three different
+ * config-based fixes failed. Deliberately isolated to its own file,
+ * imported only by /posts/[id] — every other dashboard action lives in
+ * actions.ts and has nothing to do with rendering or this HTTP call.
+ */
 export async function renderPostAction(postId: string) {
-  await renderPost(postId);
+  const url = process.env.RENDER_SERVICE_URL;
+  const secret = process.env.RENDER_SERVICE_SECRET;
+  if (!url || !secret) {
+    throw new Error(
+      "RENDER_SERVICE_URL / RENDER_SERVICE_SECRET are not configured — set them to the deployed render-service's URL and shared secret.",
+    );
+  }
+
+  const res = await fetch(`${url.replace(/\/$/, "")}/api/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Render-Secret": secret },
+    body: JSON.stringify({ postId }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`render-service returned ${res.status}: ${body.slice(0, 500)}`);
+  }
+
   revalidatePath(`/posts/${postId}`);
 }

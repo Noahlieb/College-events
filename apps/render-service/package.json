@@ -1,0 +1,17 @@
+{
+  "name": "@college-events/render-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@college-events/worker": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@vercel/node": "^3.2.24",
+    "typescript": "^5.6.3"
+  }
+}
