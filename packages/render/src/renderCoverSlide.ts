@@ -1,19 +1,32 @@
 import sharp from "sharp";
-import { escapeXml, fitText } from "./textLayout.js";
+import { bodyBoldFont, bodyRegularFont, displayFont } from "./fonts.js";
+import { fitText, measureWidth, textPathElement } from "./textLayout.js";
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type CoverSlideInput } from "./types.js";
+import type { Font } from "opentype.js";
 
 const MARGIN = 72;
+
+function centeredLine(font: Font, text: string, centerX: number, y: number, fontSize: number, attrs: Record<string, string | number>): string {
+  const width = measureWidth(font, text, fontSize);
+  return textPathElement(font, text, centerX - width / 2, y, fontSize, attrs);
+}
 
 /**
  * Renders the slide-1 cover card for a weekly carousel (e.g. "THIS WEEK AT
  * FAU — August 24-30"). No source photo involved, so this is pure branded
  * design: school colors, a bold diagonal accent, big kicker + date range.
+ * Text is outlined to SVG paths via the bundled fonts (fonts.ts) rather
+ * than rendered as `<text>` — see fonts.ts for why.
  */
 export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> {
   const { branding } = input;
-  const fontFamily = branding.fontFamily ?? "Arial Black, Helvetica, Arial, sans-serif";
+  const display = displayFont();
+  const bodyBold = bodyBoldFont();
+  const bodyRegular = bodyRegularFont();
+  const centerX = SLIDE_WIDTH / 2;
 
   const kicker = fitText(input.kicker.toUpperCase(), {
+    font: display,
     boxWidth: SLIDE_WIDTH - MARGIN * 2,
     startFontSize: 104,
     minFontSize: 56,
@@ -22,8 +35,26 @@ export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> 
   const kickerLineH = kicker.fontSize * 1.05;
   const kickerBlockH = kicker.lines.length * kickerLineH;
 
+  const kickerBaseY = SLIDE_HEIGHT / 2 - kickerBlockH / 2;
   const dateRangeY = SLIDE_HEIGHT / 2 + kickerBlockH / 2 + 70;
   const subtitleY = dateRangeY + 56;
+
+  const kickerPaths = kicker.lines
+    .map((line, i) => centeredLine(display, line, centerX, kickerBaseY + (i + 1) * kickerLineH, kicker.fontSize, { fill: "#FFFFFF" }))
+    .join("\n");
+
+  const dateRangePath = centeredLine(bodyBold, input.dateRange.toUpperCase(), centerX, dateRangeY, 40, {
+    fill: branding.accentColor,
+  });
+
+  const subtitlePath = input.subtitle
+    ? centeredLine(bodyRegular, input.subtitle, centerX, subtitleY, 26, { fill: "#FFFFFF", opacity: 0.85 })
+    : "";
+
+  const wordmarkPath = centeredLine(bodyBold, branding.wordmark, centerX, SLIDE_HEIGHT - MARGIN, 24, {
+    fill: "#FFFFFF",
+    opacity: 0.75,
+  });
 
   const svg = `
     <svg width="${SLIDE_WIDTH}" height="${SLIDE_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
@@ -37,25 +68,10 @@ export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> 
       <rect width="${SLIDE_WIDTH}" height="${SLIDE_HEIGHT}" fill="url(#bg)" />
       <polygon points="0,0 ${SLIDE_WIDTH},0 ${SLIDE_WIDTH},260 0,520" fill="${branding.backgroundColor}" opacity="0.18" />
       <polygon points="0,${SLIDE_HEIGHT} ${SLIDE_WIDTH},${SLIDE_HEIGHT} ${SLIDE_WIDTH},${SLIDE_HEIGHT - 260} 0,${SLIDE_HEIGHT - 520}" fill="#000000" opacity="0.18" />
-
-      <text x="${SLIDE_WIDTH / 2}" text-anchor="middle" font-family="${fontFamily}" font-size="${kicker.fontSize}" font-weight="900" fill="#FFFFFF">
-        ${kicker.lines
-          .map(
-            (line, i) =>
-              `<tspan x="${SLIDE_WIDTH / 2}" y="${SLIDE_HEIGHT / 2 - kickerBlockH / 2 + (i + 1) * kickerLineH}">${escapeXml(line)}</tspan>`,
-          )
-          .join("")}
-      </text>
-
-      <text x="${SLIDE_WIDTH / 2}" y="${dateRangeY}" text-anchor="middle" font-family="${fontFamily}" font-size="40" font-weight="700" fill="${branding.accentColor}" letter-spacing="3">${escapeXml(input.dateRange.toUpperCase())}</text>
-
-      ${
-        input.subtitle
-          ? `<text x="${SLIDE_WIDTH / 2}" y="${subtitleY}" text-anchor="middle" font-family="${fontFamily}" font-size="26" font-weight="400" fill="#FFFFFF" opacity="0.85">${escapeXml(input.subtitle)}</text>`
-          : ""
-      }
-
-      <text x="${SLIDE_WIDTH / 2}" y="${SLIDE_HEIGHT - MARGIN}" text-anchor="middle" font-family="${fontFamily}" font-size="24" font-weight="700" fill="#FFFFFF" opacity="0.75" letter-spacing="2">${escapeXml(branding.wordmark)}</text>
+      ${kickerPaths}
+      ${dateRangePath}
+      ${subtitlePath}
+      ${wordmarkPath}
     </svg>
   `;
 

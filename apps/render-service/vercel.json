@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/worker... build"
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/worker... build",
+  "functions": {
+    "api/render.ts": {
+      "includeFiles": "../../packages/render/assets/**"
+    }
+  }
 }

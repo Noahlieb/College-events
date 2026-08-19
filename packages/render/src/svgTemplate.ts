@@ -1,13 +1,20 @@
-import { escapeXml, fitText } from "./textLayout.js";
+import { bodyBoldFont, bodyRegularFont, displayFont } from "./fonts.js";
+import { fitText, measureWidth, textPathElement } from "./textLayout.js";
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type EventSlideInput } from "./types.js";
 
 const MARGIN = 64;
 const CONTENT_WIDTH = SLIDE_WIDTH - MARGIN * 2;
 
-function tspanLines(lines: string[], x: number, startY: number, lineHeight: number, extraAttrs = ""): string {
-  return lines
-    .map((line, i) => `<tspan x="${x}" y="${startY + i * lineHeight}" ${extraAttrs}>${escapeXml(line)}</tspan>`)
-    .join("");
+function linesToPaths(
+  font: ReturnType<typeof displayFont>,
+  lines: string[],
+  x: number,
+  startY: number,
+  lineHeight: number,
+  fontSize: number,
+  attrs: Record<string, string | number>,
+): string {
+  return lines.map((line, i) => textPathElement(font, line, x, startY + i * lineHeight, fontSize, attrs)).join("\n");
 }
 
 /**
@@ -17,12 +24,18 @@ function tspanLines(lines: string[], x: number, startY: number, lineHeight: numb
  * spirit of the reference style described in spec §18/§53: hero image
  * intact, dark gradient rising from the bottom, condensed title, then
  * date/venue/time/price/description/source in descending emphasis.
+ *
+ * Every piece of text is outlined to an SVG path via the bundled fonts
+ * (fonts.ts) rather than rendered as `<text>` — see fonts.ts for why.
  */
 export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const { branding } = input;
-  const fontFamily = branding.fontFamily ?? "Arial Black, Helvetica, Arial, sans-serif";
+  const display = displayFont();
+  const bodyBold = bodyBoldFont();
+  const bodyRegular = bodyRegularFont();
 
   const title = fitText(input.title.toUpperCase(), {
+    font: display,
     boxWidth: CONTENT_WIDTH,
     startFontSize: 88,
     minFontSize: 48,
@@ -31,11 +44,11 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
 
   const metaParts = [input.venue, input.time, input.price].filter(Boolean) as string[];
   const meta = metaParts.length
-    ? fitText(metaParts.join("   •   "), { boxWidth: CONTENT_WIDTH, startFontSize: 34, minFontSize: 24, maxLines: 2 })
+    ? fitText(metaParts.join("   •   "), { font: bodyBold, boxWidth: CONTENT_WIDTH, startFontSize: 34, minFontSize: 24, maxLines: 2 })
     : null;
 
   const description = input.description
-    ? fitText(input.description, { boxWidth: CONTENT_WIDTH, startFontSize: 30, minFontSize: 24, maxLines: 2 })
+    ? fitText(input.description, { font: bodyRegular, boxWidth: CONTENT_WIDTH, startFontSize: 30, minFontSize: 24, maxLines: 2 })
     : null;
 
   const attributionText = input.source ? `Source: ${input.source}` : null;
@@ -64,30 +77,24 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
 
   if (input.date) {
     cursorY += dateH * 0.75; // move to baseline for this block
-    parts.push(
-      `<text x="${MARGIN}" y="${cursorY}" font-family="${fontFamily}" font-size="34" font-weight="700" fill="${branding.accentColor}" letter-spacing="2">${escapeXml(input.date.toUpperCase())}</text>`,
-    );
+    parts.push(textPathElement(bodyBold, input.date.toUpperCase(), MARGIN, cursorY, 34, { fill: branding.accentColor }));
     cursorY += dateH * 0.25 + gap1;
   }
 
   cursorY += title.fontSize * 0.88;
-  parts.push(
-    `<text x="${MARGIN}" font-family="${fontFamily}" font-size="${title.fontSize}" font-weight="900" fill="#FFFFFF">${tspanLines(title.lines, MARGIN, cursorY, titleLineH)}</text>`,
-  );
+  parts.push(linesToPaths(display, title.lines, MARGIN, cursorY, titleLineH, title.fontSize, { fill: "#FFFFFF" }));
   cursorY += titleLineH * (title.lines.length - 1) + titleLineH * 0.3 + gap2;
 
   if (meta) {
     cursorY += meta.fontSize * 0.85;
-    parts.push(
-      `<text x="${MARGIN}" font-family="${fontFamily}" font-size="${meta.fontSize}" font-weight="700" fill="#FFFFFF" opacity="0.95">${tspanLines(meta.lines, MARGIN, cursorY, metaLineH)}</text>`,
-    );
+    parts.push(linesToPaths(bodyBold, meta.lines, MARGIN, cursorY, metaLineH, meta.fontSize, { fill: "#FFFFFF", opacity: 0.95 }));
     cursorY += metaLineH * (meta.lines.length - 1) + metaLineH * 0.3 + gap3;
   }
 
   if (description) {
     cursorY += description.fontSize * 0.85;
     parts.push(
-      `<text x="${MARGIN}" font-family="${fontFamily}" font-size="${description.fontSize}" font-weight="400" fill="#FFFFFF" opacity="0.85">${tspanLines(description.lines, MARGIN, cursorY, descLineH)}</text>`,
+      linesToPaths(bodyRegular, description.lines, MARGIN, cursorY, descLineH, description.fontSize, { fill: "#FFFFFF", opacity: 0.85 }),
     );
     cursorY += descLineH * (description.lines.length - 1) + descLineH * 0.3 + gap4;
   }
@@ -95,21 +102,28 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   if (attributionText) {
     cursorY += 22 * 0.85;
     parts.push(
-      `<text x="${MARGIN}" y="${cursorY}" font-family="${fontFamily}" font-size="22" font-weight="600" fill="#FFFFFF" opacity="0.65" letter-spacing="1">${escapeXml(attributionText.toUpperCase())}</text>`,
+      textPathElement(bodyBold, attributionText.toUpperCase(), MARGIN, cursorY, 22, { fill: "#FFFFFF", opacity: 0.65 }),
     );
   }
 
+  const categoryLabel = input.category.replace(/_/g, " ").toUpperCase();
+  const categoryFontSize = 18;
+  const categoryTextWidth = measureWidth(bodyBold, categoryLabel, categoryFontSize);
+  const categoryPillWidth = Math.max(120, categoryTextWidth + 48);
   const categoryPill = `
     <g>
-      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${Math.max(120, input.category.length * 15 + 48)}" height="36" fill="${branding.primaryColor}" opacity="0.92" />
-      <text x="${MARGIN + 20}" y="72" font-family="${fontFamily}" font-size="18" font-weight="700" fill="#FFFFFF" letter-spacing="1.5">${escapeXml(input.category.replace(/_/g, " ").toUpperCase())}</text>
+      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="${branding.primaryColor}" opacity="0.92" />
+      ${textPathElement(bodyBold, categoryLabel, MARGIN + 20, 72, categoryFontSize, { fill: "#FFFFFF" })}
     </g>`;
 
-  const wordmarkWidth = branding.wordmark.length * 12 + 32;
+  const wordmarkFontSize = 18;
+  const wordmarkTextWidth = measureWidth(bodyBold, branding.wordmark, wordmarkFontSize);
+  const wordmarkWidth = wordmarkTextWidth + 32;
+  const wordmarkPillX = SLIDE_WIDTH - MARGIN - wordmarkWidth;
   const wordmark = `
     <g>
-      <rect x="${SLIDE_WIDTH - MARGIN - wordmarkWidth}" y="48" rx="18" ry="18" width="${wordmarkWidth}" height="36" fill="#000000" opacity="0.4" />
-      <text x="${SLIDE_WIDTH - MARGIN - wordmarkWidth / 2}" y="72" text-anchor="middle" font-family="${fontFamily}" font-size="18" font-weight="700" fill="#FFFFFF" letter-spacing="1">${escapeXml(branding.wordmark)}</text>
+      <rect x="${wordmarkPillX}" y="48" rx="18" ry="18" width="${wordmarkWidth}" height="36" fill="#000000" opacity="0.4" />
+      ${textPathElement(bodyBold, branding.wordmark, wordmarkPillX + (wordmarkWidth - wordmarkTextWidth) / 2, 72, wordmarkFontSize, { fill: "#FFFFFF" })}
     </g>`;
 
   return `
