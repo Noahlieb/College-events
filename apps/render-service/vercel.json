@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/core --filter @college-events/db --filter @college-events/ai --filter @college-events/ingestion --filter @college-events/render --filter @college-events/scheduler --filter @college-events/worker build"
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/worker... build"
 }
