@@ -2,7 +2,8 @@ import { asc, eq } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets } from "@college-events/db";
 import { notFound } from "next/navigation";
 import { toDisplayUrl } from "@/lib/media";
-import { approvePostAction, rejectPostAction, renderPostAction, schedulePostAction } from "@/lib/actions";
+import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/actions";
+import { renderPostAction } from "@/lib/render-action";
 
 export const dynamic = "force-dynamic";
 

@@ -5,15 +5,22 @@ import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 import { db, events, eventSources, sources } from "@college-events/db";
 import type { EventCategory, SourceCategory, SourceType } from "@college-events/core";
-import {
-  approvePost,
-  rejectPost,
-  renderPost,
-  schedulePost,
-  processSchoolRawContent,
-  selectWeeklyPosts,
-  importCsvEvents,
-} from "@college-events/worker";
+// Deep imports into each pipeline file rather than the @college-events/worker
+// barrel (`import { x } from "@college-events/worker"`) — the barrel's
+// index.ts does `export * from "./pipeline/render.js"` alongside everything
+// else, and since it's evaluated as one CommonJS unit at runtime, importing
+// ANYTHING through it pulls in render.js's sharp dependency too. That native
+// addon isn't reliably resolvable in Vercel's deployed function output (see
+// render-action.ts for the full story) and was taking down every route that
+// imported from this file — including ones with nothing to do with
+// rendering, like the events list and the homepage. Only renderPostAction
+// actually needs sharp, and it now lives in its own file for exactly that
+// reason — keep it that way rather than re-adding it here.
+import { approvePost, rejectPost } from "@college-events/worker/dist/pipeline/approve.js";
+import { schedulePost } from "@college-events/worker/dist/pipeline/schedule.js";
+import { processSchoolRawContent } from "@college-events/worker/dist/pipeline/process.js";
+import { selectWeeklyPosts } from "@college-events/worker/dist/pipeline/select-posts.js";
+import { importCsvEvents } from "@college-events/worker/dist/pipeline/csv-import.js";
 import { getCurrentSchool } from "./current-school";
 
 // ── event actions ────────────────────────────────────────────────────
@@ -91,10 +98,9 @@ export async function toggleSourceActiveAction(sourceId: string, active: boolean
 
 // ── post & pipeline actions ─────────────────────────────────────────────
 // Call the worker's pipeline functions in-process rather than shelling out
-// to the worker CLI. sharp (pulled in via renderPost) is kept out of
-// Next's webpack bundle via serverExternalPackages in next.config.js —
-// see that file for why — so this works on Vercel's serverless runtime,
-// which can't spawn a pnpm subprocess the way local dev could.
+// to the worker CLI, which can't spawn a subprocess on Vercel's serverless
+// runtime the way local dev could. renderPostAction lives in its own file
+// (render-action.ts) rather than here — see that file for why.
 
 export async function approvePostAction(postId: string) {
   await approvePost(postId, "dashboard-admin");
@@ -106,11 +112,6 @@ export async function rejectPostAction(postId: string, formData: FormData) {
   const reason = String(formData.get("reason") ?? "") || "rejected from dashboard";
   await rejectPost(postId, reason, "dashboard-admin");
   revalidatePath("/posts");
-  revalidatePath(`/posts/${postId}`);
-}
-
-export async function renderPostAction(postId: string) {
-  await renderPost(postId);
   revalidatePath(`/posts/${postId}`);
 }
 
