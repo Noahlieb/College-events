@@ -24,9 +24,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, "..", "assets");
 
 function loadFont(filename: string): Font {
-  const buffer = readFileSync(join(ASSETS_DIR, filename));
+  const path = join(ASSETS_DIR, filename);
+  const buffer = readFileSync(path);
   const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-  return opentype.parse(arrayBuffer);
+  const font = opentype.parse(arrayBuffer);
+  // TEMPORARY diagnostic — tofu-box glyphs showed up in a deployed render
+  // even after a forced clean rebuild, which shouldn't be possible from
+  // path-outlined text at all. This confirms (or rules out) a corrupted/
+  // unsupported font load in the actual Lambda runtime, which local testing
+  // can't observe directly.
+  console.error(
+    `[fonts] loaded ${filename} from ${path}: fileBytes=${buffer.length} supported=${font.supported} numGlyphs=${font.glyphs.length} unitsPerEm=${font.unitsPerEm}`,
+  );
+  return font;
 }
 
 let displayFontCache: Font | null = null;

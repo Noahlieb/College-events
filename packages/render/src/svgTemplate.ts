@@ -1,5 +1,5 @@
 import { bodyBoldFont, bodyRegularFont, displayFont } from "./fonts.js";
-import { fitText, measureWidth, textPathElement } from "./textLayout.js";
+import { fitText, measureWidth, textPathElement, textToPathData } from "./textLayout.js";
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type EventSlideInput } from "./types.js";
 
 const MARGIN = 64;
@@ -110,10 +110,15 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const categoryFontSize = 18;
   const categoryTextWidth = measureWidth(bodyBold, categoryLabel, categoryFontSize);
   const categoryPillWidth = Math.max(120, categoryTextWidth + 48);
+  const categoryLabelPathD = textToPathData(bodyBold, categoryLabel, MARGIN + 20, 72, categoryFontSize);
+  // TEMPORARY diagnostic — see fonts.ts for why.
+  console.error(
+    `[svgTemplate] category label=${JSON.stringify(categoryLabel)} width=${categoryTextWidth} pathDataLength=${categoryLabelPathD.length} pathDataSample=${categoryLabelPathD.slice(0, 120)}`,
+  );
   const categoryPill = `
     <g>
       <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="${branding.primaryColor}" opacity="0.92" />
-      ${textPathElement(bodyBold, categoryLabel, MARGIN + 20, 72, categoryFontSize, { fill: "#FFFFFF" })}
+      <path d="${categoryLabelPathD}" fill="#FFFFFF" />
     </g>`;
 
   const wordmarkFontSize = 18;
