@@ -29,7 +29,7 @@ export async function renderPostAction(postId: string) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`render-service returned ${res.status}: ${body.slice(0, 500)}`);
+    throw new Error(`render-service returned ${res.status}: ${body.slice(0, 2000)}`);
   }
 
   revalidatePath(`/posts/${postId}`);

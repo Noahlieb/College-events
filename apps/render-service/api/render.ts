@@ -39,6 +39,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await renderPost(postId);
     res.status(200).json(result);
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    // console.error so Vercel's runtime logs actually capture this, not just
+    // the JSON response body — the previous version only did the latter,
+    // which left "No logs found for this request" with no stack trace to
+    // debug from. err.stack is included in the response too (temporary,
+    // while diagnosing) since this endpoint is already secret-protected.
+    console.error("renderPost failed:", err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   }
 }
