@@ -72,14 +72,14 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
             <div className="ig-image-frame">
               {assets.map((a) => (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img key={a.id} src={toDisplayUrl(a.storageUrl)} alt={a.template} className="slide-image" />
+                <img key={a.id} src={toDisplayUrl(a.storageUrl, a.id)} alt={a.template} className="slide-image" />
               ))}
             </div>
             <div className="ig-thumbs">
               {assets.map((a, i) => (
                 <label key={a.id} htmlFor={`slide-${i}`} className="thumb-label">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={toDisplayUrl(a.storageUrl)} alt={a.template} />
+                  <img src={toDisplayUrl(a.storageUrl, a.id)} alt={a.template} />
                 </label>
               ))}
             </div>

@@ -10,9 +10,16 @@ import { storageDir } from "@college-events/worker/dist/lib/storage.js";
  * in production) or a local absolute filesystem path (dev/demo). This maps
  * either into something an <img> tag can load — a passthrough for real
  * URLs, or a /media/... route for local paths.
+ *
+ * Every re-render overwrites the same storage path (upsert, per
+ * apps/worker/src/lib/storage.ts) so the URL never changes — which means a
+ * browser (and Supabase Storage's own CDN) will happily keep showing the
+ * old cached image after a re-render unless the URL itself changes. Pass
+ * `cacheBust` (renderedAssets.id, which is fresh on every render) to force
+ * a new URL each time.
  */
-export function toDisplayUrl(storageUrl: string): string {
-  if (/^https?:\/\//.test(storageUrl)) return storageUrl;
-  const relative = path.relative(storageDir(), storageUrl).split(path.sep).join("/");
-  return `/media/${relative}`;
+export function toDisplayUrl(storageUrl: string, cacheBust?: string): string {
+  const url = /^https?:\/\//.test(storageUrl) ? storageUrl : `/media/${path.relative(storageDir(), storageUrl).split(path.sep).join("/")}`;
+  if (!cacheBust) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(cacheBust)}`;
 }
