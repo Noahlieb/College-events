@@ -53,7 +53,7 @@ describe("renderEventSlide", () => {
     expect(meta.height).toBe(SLIDE_HEIGHT);
   });
 
-  it("crops a provided source image to fill the frame without stretching", async () => {
+  it("fills the frame from a provided source image without cropping or stretching it", async () => {
     const sourcePhoto = await sharp({
       create: { width: 2000, height: 1200, channels: 3, background: { r: 20, g: 20, b: 40 } },
     })

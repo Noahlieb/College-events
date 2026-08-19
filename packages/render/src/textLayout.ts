@@ -66,13 +66,26 @@ export function fitText(
   while (fontSize >= opts.minFontSize) {
     const maxChars = maxCharsForWidth(opts.boxWidth, fontSize);
     const lines = wrapText(text, maxChars);
-    if (lines.length <= opts.maxLines) {
+    // Line count alone isn't enough: a single word (a URL slug, a long
+    // hyphenated name — no spaces for wrapText to break on) can produce
+    // few "lines" that are each still wider than the box, and would
+    // otherwise render past the edge of the canvas at the start font size.
+    if (lines.length <= opts.maxLines && lines.every((line) => line.length <= maxChars)) {
       return { fontSize, lines };
     }
     fontSize -= step;
   }
   const maxChars = maxCharsForWidth(opts.boxWidth, opts.minFontSize);
-  return { fontSize: opts.minFontSize, lines: truncateLines(wrapText(text, maxChars), opts.maxLines) };
+  const lines = truncateLines(wrapText(text, maxChars), opts.maxLines).map((line) => clampLineWidth(line, maxChars));
+  return { fontSize: opts.minFontSize, lines };
+}
+
+/** Last-resort safety net for a single line that's still too wide for the
+ * box even at minFontSize (an unbroken word longer than the whole line
+ * budget) — hard-truncates it with an ellipsis rather than overflowing. */
+function clampLineWidth(line: string, maxChars: number): string {
+  if (line.length <= maxChars) return line;
+  return line.slice(0, Math.max(1, maxChars - 1)).replace(/\s+\S*$/, "") + "…";
 }
 
 export function escapeXml(text: string): string {

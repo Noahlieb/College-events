@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { db, events, postEvents, posts, renderedAssets } from "@college-events/db";
+import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { notFound } from "next/navigation";
 import { toDisplayUrl } from "@/lib/media";
 import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/actions";
@@ -11,6 +11,9 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
   if (!post) notFound();
+
+  const [school] = await db.select().from(schools).where(eq(schools.id, post.schoolId)).limit(1);
+  const handle = school?.instagramAccount ?? (school ? `@${school.shortName.toLowerCase()}` : "@preview");
 
   const linkedEvents = await db
     .select({ event: events, position: postEvents.position })
@@ -50,7 +53,12 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           </form>
         </div>
         {assets.length > 0 ? (
-          <div className="preview-layout">
+          <div className="ig-card">
+            <div className="ig-card-header">
+              <span className="ig-avatar" />
+              <span className="ig-handle">{handle}</span>
+            </div>
+
             {assets.map((a, i) => (
               <input
                 key={`r-${a.id}`}
@@ -61,13 +69,13 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
                 defaultChecked={i === 0}
               />
             ))}
-            <div className="slide-stage">
+            <div className="ig-image-frame">
               {assets.map((a) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img key={a.id} src={toDisplayUrl(a.storageUrl)} alt={a.template} className="slide-image" />
               ))}
             </div>
-            <div className="carousel-thumbs">
+            <div className="ig-thumbs">
               {assets.map((a, i) => (
                 <label key={a.id} htmlFor={`slide-${i}`} className="thumb-label">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

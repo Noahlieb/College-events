@@ -105,7 +105,12 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
       <text x="${MARGIN + 20}" y="72" font-family="${fontFamily}" font-size="18" font-weight="700" fill="#FFFFFF" letter-spacing="1.5">${escapeXml(input.category.replace(/_/g, " ").toUpperCase())}</text>
     </g>`;
 
-  const wordmark = `<text x="${SLIDE_WIDTH - MARGIN}" y="72" text-anchor="end" font-family="${fontFamily}" font-size="20" font-weight="700" fill="#FFFFFF" opacity="0.8" letter-spacing="1">${escapeXml(branding.wordmark)}</text>`;
+  const wordmarkWidth = branding.wordmark.length * 12 + 32;
+  const wordmark = `
+    <g>
+      <rect x="${SLIDE_WIDTH - MARGIN - wordmarkWidth}" y="48" rx="18" ry="18" width="${wordmarkWidth}" height="36" fill="#000000" opacity="0.4" />
+      <text x="${SLIDE_WIDTH - MARGIN - wordmarkWidth / 2}" y="72" text-anchor="middle" font-family="${fontFamily}" font-size="18" font-weight="700" fill="#FFFFFF" letter-spacing="1">${escapeXml(branding.wordmark)}</text>
+    </g>`;
 
   return `
     <svg width="${SLIDE_WIDTH}" height="${SLIDE_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
@@ -113,9 +118,11 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
         <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="${branding.backgroundColor}" stop-opacity="0" />
           <stop offset="${Math.round(gradientStartFrac * 100)}%" stop-color="${branding.backgroundColor}" stop-opacity="0" />
-          <stop offset="100%" stop-color="${branding.backgroundColor}" stop-opacity="0.94" />
+          <stop offset="${Math.round(Math.min(94, gradientStartFrac * 100 + 22))}%" stop-color="${branding.backgroundColor}" stop-opacity="0.88" />
+          <stop offset="100%" stop-color="${branding.backgroundColor}" stop-opacity="0.96" />
         </linearGradient>
       </defs>
+      <rect width="${SLIDE_WIDTH}" height="${SLIDE_HEIGHT}" fill="#000000" opacity="0.14" />
       <rect width="${SLIDE_WIDTH}" height="${SLIDE_HEIGHT}" fill="url(#fade)" />
       ${categoryPill}
       ${wordmark}
