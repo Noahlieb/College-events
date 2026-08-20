@@ -28,6 +28,7 @@ IMAGE/SLIDE GENERATION → CAPTION GENERATION → HUMAN APPROVAL → SCHEDULER �
 - [Adding a new source](#adding-a-new-source)
 - [Orchestration with n8n](#orchestration-with-n8n)
 - [Testing](#testing)
+- [Deploying](#deploying)
 - [Credentials needed before live deployment](#credentials-needed-before-live-deployment)
 - [Troubleshooting](#troubleshooting)
 - [What's built vs. what's next](#whats-built-vs-whats-next)
@@ -383,6 +384,51 @@ generation/dimension checks via Sharp), `scheduler` (mock + Buffer adapter again
 a faked `fetch`), and `db` (seed-data referential integrity). None of them require
 a live database, AI key, or network call — the mock AI/scheduler providers and
 injectable-`fetch` adapters make the whole suite fast and deterministic.
+
+## Deploying
+
+Two Vercel projects: `dashboard` (the Next.js admin UI) and `render-service` (a
+standalone Node Function that generates the carousel images — it lives apart from
+the dashboard because `sharp`, a native addon, could not be reliably bundled into
+Next's serverless output).
+
+**Always deploy with these scripts, never `vercel --prod` on its own:**
+
+```bash
+pnpm deploy:render-service
+pnpm deploy:dashboard
+```
+
+Each one compiles the workspace packages **locally** and then deploys, which is
+load-bearing rather than a convenience. The deployed functions import
+`@college-events/*` from `packages/*/dist`. Vercel's remote build for these
+projects proved unreliable at rebuilding that output, and `dist/` is gitignored —
+so with no `.vercelignore` the CLI (which falls back to `.gitignore`) never
+uploaded a freshly built copy either. The net effect was a function permanently
+frozen on the build from its very first successful deploy: every subsequent
+source change deployed cleanly, reported success, and changed nothing, for as
+long as the entrypoint file itself still compiled. The root `.vercelignore` now
+deliberately *includes* `dist/` in uploads (and excludes `.env` explicitly, since
+`.gitignore` no longer governs uploads), and these scripts guarantee that `dist/`
+is current before it ships.
+
+To confirm a deploy is actually live and rendering text correctly, the render
+service has a self-check that bypasses the whole pipeline and returns a single
+letter rendered as base64, plus a build marker:
+
+```bash
+curl -s -X POST "$RENDER_SERVICE_URL/api/render" \
+  -H "Content-Type: application/json" \
+  -H "X-Render-Secret: $RENDER_SERVICE_SECRET" \
+  -d '{"diagnostic":true}' -o /tmp/diag.json
+
+node -e "const d=require('/tmp/diag.json');console.log(d.buildMarker);\
+require('fs').writeFileSync('/tmp/diag.jpg',Buffer.from(d.imageBase64,'base64'))"
+```
+
+If `/tmp/diag.jpg` shows a clean letter, the deployed renderer is healthy. Bump
+`BUILD_MARKER` in `apps/render-service/api/render.ts` when you want to prove a
+specific build reached production.
 
 ## Credentials needed before live deployment
 
