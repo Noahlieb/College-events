@@ -1,11 +1,12 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
-import { db, events, eventSources, schools, sources } from "@college-events/db";
+import { and, eq, ne } from "drizzle-orm";
+import { db, events, eventSources, posts, schools, sources } from "@college-events/db";
 import {
   EVENT_CATEGORIES,
   POST_LANES,
   daysUntil,
   scoreEvent,
   type EventCategory,
+  type SourceCategory,
   type WeeklyScheduleSlot,
 } from "@college-events/core";
 import { estimateDistanceMiles, isCampusAffiliated } from "../lib/geo-heuristic.js";
@@ -17,6 +18,8 @@ export interface BackfillSummary {
   sourcesPinned: { name: string; forceCategory: string }[];
   eventsRecategorized: number;
   eventsRescored: number;
+  /** Existing posts whose post type no longer maps to a lane. Left in
+   * place (they are real history) but never rebuilt again. */
   postsOrphaned: number;
 }
 
@@ -56,11 +59,9 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
   //    `import-csv --source=` already matches on.
   const PINS: Record<string, EventCategory> = { "Posh.vip Nightlife": "nightlife" };
   const schoolSources = await db.select().from(sources).where(eq(sources.schoolId, schoolId));
-  const pinnedSourceIds: string[] = [];
   for (const src of schoolSources) {
     const pin = PINS[src.name];
     if (!pin) continue;
-    pinnedSourceIds.push(src.id);
     summary.sourcesPinned.push({ name: src.name, forceCategory: pin });
     if (!dryRun && src.metadata?.forceCategory !== pin) {
       await db
@@ -75,60 +76,89 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
   //    carries a nightlife bucket score computed with the wrong affinity,
   //    so recategorizing without rescoring would leave it correctly routed
   //    but ranked as if it were still out of place.
-  if (pinnedSourceIds.length > 0) {
-    const linked = await db
-      .selectDistinct({ eventId: eventSources.eventId, sourceId: eventSources.sourceId })
-      .from(eventSources)
-      .where(inArray(eventSources.sourceId, pinnedSourceIds));
+  //
+  //    Every non-rejected event is rescored, not just the pinned ones: the
+  //    bucket-affinity table itself changed when sports gained a lane on
+  //    both posts (mondayCampus 0.75→1.1, thursdayNightlife 0.2→1.05), so
+  //    every stored score predating that is stale. A Saturday game would
+  //    otherwise route to the weekend post correctly and then fall under
+  //    the min-score cutoff and silently disappear.
+  const links = await db
+    .select({ eventId: eventSources.eventId, sourceId: eventSources.sourceId })
+    .from(eventSources)
+    .innerJoin(sources, eq(eventSources.sourceId, sources.id))
+    .where(eq(sources.schoolId, schoolId));
 
-    const targetCategoryByEvent = new Map<string, EventCategory>();
-    for (const link of linked) {
-      const src = schoolSources.find((s) => s.id === link.sourceId);
-      const pin = src ? PINS[src.name] : undefined;
-      if (pin) targetCategoryByEvent.set(link.eventId, pin);
-    }
+  const pinnedCategoryByEvent = new Map<string, EventCategory>();
+  // Source category drives the campus-affiliation bonus, exactly as it does
+  // on the original ingest path — assuming "nearby" for everything here
+  // would quietly strip that bonus from every campus event and could push
+  // it under the selection cutoff. Where an event has several sources, the
+  // highest-priority one wins, matching how the rest of the pipeline
+  // resolves conflicting sources.
+  const sourceCategoryByEvent = new Map<string, { category: SourceCategory; priority: number }>();
+  for (const link of links) {
+    const src = schoolSources.find((s) => s.id === link.sourceId);
+    if (!src) continue;
 
-    if (targetCategoryByEvent.size > 0) {
-      const rows = await db
-        .select()
-        .from(events)
-        .where(
-          and(
-            eq(events.schoolId, schoolId),
-            ne(events.status, "rejected"),
-            inArray(events.id, [...targetCategoryByEvent.keys()]),
-          ),
-        );
+    const pin = PINS[src.name];
+    if (pin) pinnedCategoryByEvent.set(link.eventId, pin);
 
-      for (const event of rows) {
-        const target = targetCategoryByEvent.get(event.id)!;
-        const needsRecategorize = event.category !== target;
-        const bucketScores = scoreEvent({
-          category: target,
-          distanceMiles: estimateDistanceMiles(event.city, school.city),
-          priceText: event.price,
-          isCampusAffiliated: isCampusAffiliated(event.organization, school.name, school.shortName, "nearby"),
-          daysUntilStart: daysUntil(event.startAt.toISOString(), school.timezone),
-        });
-
-        if (needsRecategorize) summary.eventsRecategorized++;
-        summary.eventsRescored++;
-
-        if (!dryRun) {
-          await db
-            .update(events)
-            .set({
-              category: target,
-              tags: Array.from(new Set([target, ...event.tags.filter((t) => (EVENT_CATEGORIES as readonly string[]).includes(t))])),
-              bucketScores,
-              relevanceScore: bucketScores.overall,
-              updatedAt: new Date(),
-            })
-            .where(eq(events.id, event.id));
-        }
-      }
+    const best = sourceCategoryByEvent.get(link.eventId);
+    if (!best || src.priority > best.priority) {
+      sourceCategoryByEvent.set(link.eventId, { category: src.category, priority: src.priority });
     }
   }
+
+  const allEvents = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.schoolId, schoolId), ne(events.status, "rejected")));
+
+  for (const event of allEvents) {
+    const target = pinnedCategoryByEvent.get(event.id) ?? event.category;
+    const needsRecategorize = event.category !== target;
+    const bucketScores = scoreEvent({
+      category: target,
+      distanceMiles: estimateDistanceMiles(event.city, school.city),
+      priceText: event.price,
+      isCampusAffiliated: isCampusAffiliated(
+        event.organization,
+        school.name,
+        school.shortName,
+        sourceCategoryByEvent.get(event.id)?.category ?? "nearby",
+      ),
+      daysUntilStart: daysUntil(event.startAt.toISOString(), school.timezone),
+    });
+
+    if (needsRecategorize) summary.eventsRecategorized++;
+    summary.eventsRescored++;
+
+    if (!dryRun) {
+      await db
+        .update(events)
+        .set({
+          category: target,
+          tags: Array.from(
+            new Set([target, ...event.tags.filter((t) => (EVENT_CATEGORIES as readonly string[]).includes(t))]),
+          ),
+          bucketScores,
+          relevanceScore: bucketScores.overall,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, event.id));
+    }
+  }
+
+  // 4. Report posts whose type no longer has a lane. They are left in place
+  //    rather than deleted — they are real published/approved history — but
+  //    select-posts will never rebuild them again, so an operator needs to
+  //    know they are now frozen rather than quietly stale.
+  const orphanedPosts = await db
+    .select({ id: posts.id, postType: posts.postType, scheduledDate: posts.scheduledDate })
+    .from(posts)
+    .where(eq(posts.schoolId, schoolId));
+  summary.postsOrphaned = orphanedPosts.filter((p) => !laneTypes.has(p.postType)).length;
 
   if (!dryRun) {
     await log(
@@ -137,7 +167,7 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
       "backfill_lanes",
       `Lane backfill: schedule ${summary.scheduleSlotsBefore}→${summary.scheduleSlotsAfter} slots, ` +
         `${summary.sourcesPinned.length} source(s) pinned, ${summary.eventsRecategorized} event(s) recategorized, ` +
-        `${summary.eventsRescored} rescored.`,
+        `${summary.eventsRescored} rescored, ${summary.postsOrphaned} post(s) left orphaned by retired post types.`,
     );
   }
 
