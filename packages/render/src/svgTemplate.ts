@@ -115,10 +115,12 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   console.error(
     `[svgTemplate] category label=${JSON.stringify(categoryLabel)} width=${categoryTextWidth} pathDataLength=${categoryLabelPathD.length} pathDataSample=${categoryLabelPathD.slice(0, 120)}`,
   );
+  // TEMPORARY: hardcoded neon green instead of branding.primaryColor, purely
+  // to make it unmistakable at a glance whether a deploy actually landed.
   const categoryPill = `
     <g>
-      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="${branding.primaryColor}" opacity="0.92" />
-      <path d="${categoryLabelPathD}" fill="#FFFFFF" />
+      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="#39FF14" opacity="1" />
+      <path d="${categoryLabelPathD}" fill="#000000" />
     </g>`;
 
   const wordmarkFontSize = 18;
