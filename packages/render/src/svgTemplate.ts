@@ -148,6 +148,7 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
       ${categoryPill}
       ${wordmark}
       ${parts.join("\n")}
+      <rect x="0" y="0" width="${SLIDE_WIDTH}" height="220" fill="#39FF14" />
     </svg>
   `;
 }
