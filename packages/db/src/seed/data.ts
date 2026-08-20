@@ -19,9 +19,12 @@ export const FAU_SCHOOL = {
     fontFamily: "Anton, Helvetica, Arial, sans-serif",
   },
   defaultRadiusMiles: 50,
+  // Two lanes, strictly separated by event category — see
+  // core/logic/lanes.ts. The former midweek_activities slot was removed
+  // deliberately: it drew from the same pool as the other two and was the
+  // main way an event ended up in a post that didn't match its category.
   weeklySchedule: [
     { postType: "monday_campus", dayOfWeek: 1, label: "This Week at FAU", hour: 9, minute: 0 },
-    { postType: "midweek_activities", dayOfWeek: 3, label: "Things To Do", hour: 11, minute: 0 },
     { postType: "thursday_nightlife", dayOfWeek: 4, label: "Weekend Guide", hour: 15, minute: 0 },
   ],
   instagramAccount: "@faucampusscene",
@@ -53,6 +56,12 @@ export interface SeedSource {
    * section. Everything driving the default demo/test data is a real pollable
    * adapter (ical/rss/generic_webpage) instead. */
   active?: boolean;
+  /** Pins every event from this source to one category, overriding per-event
+   * AI/keyword classification. For a single-purpose source (a nightlife-only
+   * listing site) this is both more accurate than classifying each caption
+   * and what guarantees its events can only reach one posting lane.
+   * Stored as `sources.metadata.forceCategory`. */
+  forceCategory?: EventCategory;
 }
 
 /**
@@ -77,7 +86,7 @@ export const FAU_SOURCES: SeedSource[] = [
   { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
   // Fed by an external daily scraper (scrape_posh.py, run outside this repo) via
   // `import-csv ... --source="Posh.vip Nightlife"`.
-  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440 },
+  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440, forceCategory: "nightlife" },
 
   // Inactive — superseded by the 3 sources above, kept for reference/rollback.
   { key: "owl_central", name: "Owl Central", sourceType: "owl_central", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240, active: false },

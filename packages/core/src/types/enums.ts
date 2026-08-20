@@ -77,6 +77,9 @@ export type EventStatus = (typeof EVENT_STATUSES)[number];
 
 export const POST_TYPES = [
   "monday_campus",
+  /** Legacy. No weekly schedule slot produces this any more (see
+   * logic/lanes.ts — the two remaining lanes are campus and nightlife), but
+   * the value must stay in the pgEnum so historical rows remain readable. */
   "midweek_activities",
   "thursday_nightlife",
   "custom",

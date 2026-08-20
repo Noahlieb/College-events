@@ -1,7 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, events } from "@college-events/db";
+import { laneForCategory } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
 import { approveEventAction, forceIncludeEventAction, rejectEventAction } from "@/lib/actions";
+
+/** Short label for the weekly post an event's category routes it to. */
+const LANE_LABEL: Record<string, string> = {
+  monday_campus: "Mon · Campus",
+  thursday_nightlife: "Thu · Nightlife",
+};
 
 const VERIFICATION_BADGE: Record<string, string> = {
   verified: "badge-green",
@@ -65,6 +72,7 @@ export default async function EventsPage({
               <th>Date</th>
               <th>Venue</th>
               <th>Category</th>
+              <th>Goes to</th>
               <th>Score</th>
               <th>Verification</th>
               <th>Status</th>
@@ -101,6 +109,21 @@ export default async function EventsPage({
                   <td>{new Date(e.startAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                   <td>{e.venue ?? "—"}</td>
                   <td>{e.category.replace("_", " ")}</td>
+                  <td>
+                    {(() => {
+                      const lane = laneForCategory(e.category);
+                      return lane ? (
+                        <span className="badge badge-blue">{LANE_LABEL[lane.postType] ?? lane.postType}</span>
+                      ) : (
+                        // Not an error — these categories are deliberately not
+                        // auto-posted. Shown so they're visibly parked rather
+                        // than appearing to vanish from the schedule.
+                        <span className="badge badge-muted" title="No weekly post accepts this category — force-include it to use it">
+                          no post
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td>{bucket.overall}</td>
                   <td>
                     <span className={`badge ${VERIFICATION_BADGE[e.verificationStatus] ?? "badge-muted"}`}>

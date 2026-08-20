@@ -1,15 +1,9 @@
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db, events, postEvents, posts, schools } from "@college-events/db";
-import { selectEventsForPost, type PostBucket, type WeeklyScheduleSlot } from "@college-events/core";
+import { assertLanePurity, laneForPostType, selectEventsForPost, type WeeklyScheduleSlot } from "@college-events/core";
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
-
-const BUCKET_BY_POST_TYPE: Record<string, PostBucket> = {
-  monday_campus: "mondayCampus",
-  midweek_activities: "midweekActivity",
-  thursday_nightlife: "thursdayNightlife",
-};
 
 const MAX_SLIDES_PER_POST = 8;
 
@@ -64,8 +58,8 @@ export async function selectWeeklyPosts(
   const results: PostBuildResult[] = [];
 
   for (const slot of schedule) {
-    const bucket = BUCKET_BY_POST_TYPE[slot.postType];
-    if (!bucket) continue;
+    const lane = laneForPostType(slot.postType);
+    if (!lane) continue;
 
     const selectable = weekEvents.map((e) => ({
       id: e.id,
@@ -75,16 +69,44 @@ export async function selectWeeklyPosts(
       startAt: e.startAt.toISOString(),
     }));
 
-    const selected = selectEventsForPost(selectable, { bucket, maxSlides: MAX_SLIDES_PER_POST, now: referenceDate });
+    const selected = selectEventsForPost(selectable, {
+      bucket: lane.bucket,
+      allowedCategories: lane.categories,
+      maxSlides: MAX_SLIDES_PER_POST,
+      now: referenceDate,
+    });
     const selectedIds = new Set(selected.map((s) => s.id));
 
     // Dashboard "force include" (spec §23) bypasses the score/cap filters —
     // an admin's manual override always wins a slide, even past maxSlides.
-    const forced = weekEvents.filter((e) => !selectedIds.has(e.id) && e.flags.includes("force_include"));
+    // It does NOT bypass the lane's category rule: forcing a nightlife event
+    // into the campus post is exactly the mix-up the lanes exist to prevent,
+    // so an out-of-lane force_include is skipped and logged rather than
+    // failing the whole post build.
+    const forcedInLane: typeof weekEvents = [];
+    for (const e of weekEvents) {
+      if (selectedIds.has(e.id) || !e.flags.includes("force_include")) continue;
+      if (lane.categories.includes(e.category)) {
+        forcedInLane.push(e);
+      } else {
+        await log(
+          schoolId,
+          "warn",
+          "select_posts",
+          `Ignoring force_include for event ${e.id} (${e.category}) in ${slot.postType}: category not allowed in this lane.`,
+          { eventId: e.id },
+        );
+      }
+    }
 
-    const selectedEvents = [...selected.map((s) => weekEvents.find((e) => e.id === s.id)!), ...forced].sort(
+    const selectedEvents = [...selected.map((s) => weekEvents.find((e) => e.id === s.id)!), ...forcedInLane].sort(
       (a, b) => a.startAt.getTime() - b.startAt.getTime(),
     ); // chronological within the carousel
+
+    // Last gate before anything is written. Selection and the force_include
+    // path above both filter by category already, so a failure here means a
+    // logic bug — better to abort this post than publish mixed content.
+    assertLanePurity(slot.postType, selectedEvents);
 
     const scheduledDate = scheduledDateFor(weekMonday, slot);
 

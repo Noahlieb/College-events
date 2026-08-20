@@ -90,9 +90,13 @@ export function summarizeEventPrompt(input: SummarizeEventInput): { system: stri
 
 export function generateCaptionPrompt(input: GenerateCaptionInput): { system: string; user: string } {
   const bucketVoice: Record<GenerateCaptionInput["postType"], string> = {
-    monday_campus: "upbeat, campus-community tone (this is the Monday 'This Week at [School]' post)",
-    midweek_activities: "energetic tone for sports/concerts/things-to-do (this is the midweek activities post)",
-    thursday_nightlife: "fun, weekend-hype tone (this is the Thursday nightlife/weekend guide post)",
+    monday_campus:
+      "upbeat, campus-community tone (this is the Monday 'This Week at [School]' post — campus events, student orgs and Owls athletics only)",
+    // Retained only so historical posts with this type still generate a
+    // caption; no schedule slot produces it any more.
+    midweek_activities: "energetic tone for sports/concerts/things-to-do (legacy midweek post)",
+    thursday_nightlife:
+      "fun, weekend-hype tone (this is the Thursday nightlife/weekend guide post — nightlife only, never campus or sports)",
     custom: "clear, useful tone",
   };
   const system = [

@@ -8,6 +8,7 @@ import {
   sources,
 } from "@college-events/db";
 import {
+  EVENT_CATEGORIES,
   EventDateParseError,
   areDuplicates,
   categorizeEvent,
@@ -119,8 +120,7 @@ export async function processSchoolRawContent(
         throw err;
       }
 
-      const category: EventCategory =
-        extracted.category ?? categorizeEvent({ name: extracted.event_name ?? "", description: extracted.description }).category;
+      const category = resolveCategory(source, extracted);
 
       const distanceMiles = estimateDistanceMiles(extracted.city, school.city);
       const affiliated = isCampusAffiliated(extracted.organization, school.name, school.shortName, source.category);
@@ -255,6 +255,33 @@ export async function processSchoolRawContent(
   }
 
   return summary;
+}
+
+/**
+ * Decides an event's category, honouring a source-level pin when one is
+ * configured (`sources.metadata.forceCategory`).
+ *
+ * Some sources are single-purpose by nature — Posh.vip only ever lists
+ * nightlife — and letting per-event AI/keyword classification override that
+ * is a net loss: a nightclub promo whose caption happens to say "live music"
+ * or "free food" gets classified as concert/food_drink and then, under the
+ * lane rules in core/logic/lanes.ts, either lands in the wrong post or falls
+ * out of the schedule entirely. Pinning at the source is both more accurate
+ * and the mechanism that guarantees these events can only reach the
+ * nightlife lane.
+ */
+function resolveCategory(
+  source: typeof sources.$inferSelect,
+  extracted: { event_name: string | null; description: string | null; category: string | null },
+): EventCategory {
+  const forced = source.metadata?.forceCategory;
+  if (typeof forced === "string" && (EVENT_CATEGORIES as readonly string[]).includes(forced)) {
+    return forced as EventCategory;
+  }
+  return (
+    (extracted.category as EventCategory | null) ??
+    categorizeEvent({ name: extracted.event_name ?? "", description: extracted.description }).category
+  );
 }
 
 function buildFieldConfidence(extracted: {

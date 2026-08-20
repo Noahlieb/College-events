@@ -6,4 +6,5 @@ export * from "./logic/categorize.js";
 export * from "./logic/scoring.js";
 export * from "./logic/dedup.js";
 export * from "./logic/verification.js";
+export * from "./logic/lanes.js";
 export * from "./logic/selection.js";

@@ -35,6 +35,7 @@ async function main() {
         priority: s.priority,
         active: s.active ?? true,
         scrapeFrequencyMinutes: s.scrapeFrequencyMinutes ?? 360,
+        metadata: s.forceCategory ? { forceCategory: s.forceCategory } : {},
       })
       .returning();
     if (!row) throw new Error(`Failed to insert source ${s.key}`);

@@ -1,7 +1,8 @@
 import type { EventCategory, VerificationStatus } from "../types/enums.js";
 import type { BucketScores } from "../types/domain.js";
+import type { PostBucket } from "./lanes.js";
 
-export type PostBucket = keyof Omit<BucketScores, "overall">;
+export type { PostBucket };
 
 export interface SelectableEvent {
   id: string;
@@ -14,6 +15,10 @@ export interface SelectableEvent {
 export interface SelectionOptions {
   bucket: PostBucket;
   maxSlides: number;
+  /** The ONLY categories eligible for this post. A hard filter applied
+   * before scoring — see lanes.ts: score can rank within a lane but must
+   * never move an event across lanes. */
+  allowedCategories: readonly EventCategory[];
   /** Events scoring below this in the target bucket are never included,
    * even if that means shipping fewer slides than maxSlides (spec §20). */
   minScore?: number;
@@ -36,6 +41,9 @@ export function selectEventsForPost(
   const now = options.now ?? new Date();
 
   const eligible = events.filter((e) => {
+    // Category first and unconditionally: no score, override or tie-break
+    // may put an event in a lane its category doesn't belong to.
+    if (!options.allowedCategories.includes(e.category)) return false;
     if (e.verificationStatus === "conflict" || e.verificationStatus === "rejected") return false;
     if (new Date(e.startAt).getTime() < now.getTime()) return false;
     return e.bucketScores[options.bucket] >= minScore;

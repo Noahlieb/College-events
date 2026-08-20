@@ -69,12 +69,22 @@ const CATEGORY_APPEAL: Record<EventCategory, number> = {
   other: 40,
 };
 
-/** How well each category fits each weekly post bucket, as a multiplier. */
+/**
+ * How well each category fits each weekly post bucket, as a multiplier.
+ *
+ * These only rank events *within* a lane. Which lane an event may appear in
+ * at all is decided by hard category membership in logic/lanes.ts — so the
+ * near-zero cross-lane values here are belt-and-braces, not the mechanism.
+ * `midweekActivity` is retained so previously-scored rows keep their shape,
+ * but no lane consumes it any more (the midweek post was removed).
+ */
 const BUCKET_AFFINITY: Record<keyof Omit<BucketScores, "overall">, Record<EventCategory, number>> = {
   mondayCampus: {
     campus: 1.15,
     student_org: 1.1,
-    sports: 0.75,
+    // Sports headline the Monday post alongside campus events, so this is a
+    // boost rather than the penalty it carried when midweek owned athletics.
+    sports: 1.1,
     career: 0.85,
     academic: 0.7,
     networking: 0.65,
