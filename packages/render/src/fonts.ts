@@ -28,14 +28,15 @@ function loadFont(filename: string): Font {
   const buffer = readFileSync(path);
   const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
   const font = opentype.parse(arrayBuffer);
-  // TEMPORARY diagnostic — tofu-box glyphs showed up in a deployed render
-  // even after a forced clean rebuild, which shouldn't be possible from
-  // path-outlined text at all. This confirms (or rules out) a corrupted/
-  // unsupported font load in the actual Lambda runtime, which local testing
-  // can't observe directly.
-  console.error(
-    `[fonts] loaded ${filename} from ${path}: fileBytes=${buffer.length} supported=${font.supported} numGlyphs=${font.glyphs.length} unitsPerEm=${font.unitsPerEm}`,
-  );
+  // Fail loudly (a 500 with this message in the response body) rather than
+  // silently proceeding with a corrupted/partially-parsed font — a bad
+  // parse here wouldn't throw on its own, it'd just produce garbage glyph
+  // shapes downstream with no indication of why.
+  if (!font.supported || font.glyphs.length < 10) {
+    throw new Error(
+      `Font "${filename}" failed to load correctly (path=${path}, fileBytes=${buffer.length}, supported=${font.supported}, numGlyphs=${font.glyphs.length}, unitsPerEm=${font.unitsPerEm}). The font file is likely missing or corrupted in the deployed bundle.`,
+    );
+  }
   return font;
 }
 
