@@ -1,12 +1,11 @@
 import sharp from "sharp";
-import { bodyBoldFont, bodyRegularFont, displayFont } from "./fonts.js";
+import { bodyBoldFont, bodyRegularFont, displayFont, type GlyphFont } from "./fonts.js";
 import { fitText, measureWidth, textPathElement } from "./textLayout.js";
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type CoverSlideInput } from "./types.js";
-import type { Font } from "opentype.js";
 
 const MARGIN = 72;
 
-function centeredLine(font: Font, text: string, centerX: number, y: number, fontSize: number, attrs: Record<string, string | number>): string {
+function centeredLine(font: GlyphFont, text: string, centerX: number, y: number, fontSize: number, attrs: Record<string, string | number>): string {
   const width = measureWidth(font, text, fontSize);
   return textPathElement(font, text, centerX - width / 2, y, fontSize, attrs);
 }

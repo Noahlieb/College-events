@@ -4,7 +4,7 @@
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/worker... build",
   "functions": {
     "api/render.ts": {
-      "includeFiles": "../../packages/render/assets/**"
+      "includeFiles": "../../packages/render/src/glyph-data/**"
     }
   }
 }

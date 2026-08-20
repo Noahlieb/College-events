@@ -1,60 +1,62 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-// opentype.js is CommonJS (module.exports = { Font, parse, load, ... }).
-// `import * as ns` only synthesizes named bindings that cjs-module-lexer can
-// statically detect, which is unreliable for this object-literal export
-// shape — under Node's real ESM/CJS interop, a *default* import always
-// resolves to the whole module.exports object, so `opentype.parse` is only
-// guaranteed to exist through the default import, not a namespace import.
-import opentype from "opentype.js";
-import type { Font } from "opentype.js";
 
-/**
- * Fonts are shipped as bundled .ttf files and pre-outlined to SVG path data
- * (see textToPathData in textLayout.ts) rather than referenced by
- * font-family name. Serverless environments like Vercel's Node.js
- * functions have no system fonts and no fontconfig setup, so any
- * `<text font-family="...">` element in an SVG composited by sharp/librsvg
- * silently renders as missing or garbled glyphs there even though it looks
- * fine locally — outlining to vector paths at render time sidesteps font
- * discovery entirely.
- */
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ASSETS_DIR = join(__dirname, "..", "assets");
+export type GlyphPathCommand =
+  | { type: "M" | "L"; x: number; y: number }
+  | { type: "C"; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
+  | { type: "Q"; x1: number; y1: number; x: number; y: number }
+  | { type: "Z" };
 
-function loadFont(filename: string): Font {
-  const path = join(ASSETS_DIR, filename);
-  const buffer = readFileSync(path);
-  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-  const font = opentype.parse(arrayBuffer);
-  // Fail loudly (a 500 with this message in the response body) rather than
-  // silently proceeding with a corrupted/partially-parsed font — a bad
-  // parse here wouldn't throw on its own, it'd just produce garbage glyph
-  // shapes downstream with no indication of why.
-  if (!font.supported || font.glyphs.length < 10) {
-    throw new Error(
-      `Font "${filename}" failed to load correctly (path=${path}, fileBytes=${buffer.length}, supported=${font.supported}, numGlyphs=${font.glyphs.length}, unitsPerEm=${font.unitsPerEm}). The font file is likely missing or corrupted in the deployed bundle.`,
-    );
-  }
-  return font;
+export interface GlyphOutline {
+  advanceWidth: number;
+  commands: GlyphPathCommand[];
 }
 
-let displayFontCache: Font | null = null;
-let bodyBoldFontCache: Font | null = null;
-let bodyRegularFontCache: Font | null = null;
+export interface GlyphFont {
+  unitsPerEm: number;
+  glyphs: Record<string, GlyphOutline>;
+}
+
+/**
+ * Fonts are shipped as pre-extracted glyph outline data (JSON, produced
+ * once by scripts/extract-glyphs.mjs from the bundled .ttf files) rather
+ * than parsed from the raw font files at request time. This is a
+ * deliberately harder-to-explain design than "just parse the .ttf with
+ * opentype.js" — that's what an earlier version of this file did, and it
+ * demonstrably worked every single time it was run locally against these
+ * exact fonts, yet produced garbled/box-shaped glyphs once deployed to
+ * Vercel's Node.js Function runtime, with no error and no reproducible
+ * local counterpart to debug against. Rather than keep chasing a bundler-
+ * or-runtime-specific difference that can't be observed outside that
+ * environment, the glyph shapes are extracted once (offline, where the
+ * extraction is verified correct) and the runtime here does nothing more
+ * than JSON.parse plus arithmetic — see textLayout.ts's textToPathData for
+ * the actual scale/translate math.
+ */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const GLYPH_DATA_DIR = join(__dirname, "..", "src", "glyph-data");
+
+function loadGlyphFont(filename: string): GlyphFont {
+  const raw = readFileSync(join(GLYPH_DATA_DIR, filename), "utf-8");
+  return JSON.parse(raw) as GlyphFont;
+}
+
+let displayFontCache: GlyphFont | null = null;
+let bodyBoldFontCache: GlyphFont | null = null;
+let bodyRegularFontCache: GlyphFont | null = null;
 
 /** Big condensed display face used for slide titles/kickers (Anton). */
-export function displayFont(): Font {
-  return (displayFontCache ??= loadFont("Anton-Regular.ttf"));
+export function displayFont(): GlyphFont {
+  return (displayFontCache ??= loadGlyphFont("anton.json"));
 }
 
 /** Bold body face used for dates, meta lines, category pill, wordmark (Archivo Bold). */
-export function bodyBoldFont(): Font {
-  return (bodyBoldFontCache ??= loadFont("Archivo-Bold.ttf"));
+export function bodyBoldFont(): GlyphFont {
+  return (bodyBoldFontCache ??= loadGlyphFont("archivo-bold.json"));
 }
 
 /** Regular body face used for descriptions and source attribution (Archivo Regular). */
-export function bodyRegularFont(): Font {
-  return (bodyRegularFontCache ??= loadFont("Archivo-Regular.ttf"));
+export function bodyRegularFont(): GlyphFont {
+  return (bodyRegularFontCache ??= loadGlyphFont("archivo-regular.json"));
 }
