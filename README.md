@@ -341,22 +341,33 @@ agreeing on an event marks it `VERIFIED`; a single low-priority source stays
 
 ## Posting lanes
 
-Two posts go out per week, and which one an event can appear in is decided by
-its **category**, not by its score:
+Two posts go out per week. Which one an event can appear in is decided by its
+**category and when it happens** — never by its score:
 
-| Lane | Post | Categories it may contain |
-|---|---|---|
-| `monday_campus` | Mon 9:00 — "This Week at FAU" | `campus`, `student_org`, `sports` |
-| `thursday_nightlife` | Thu 15:00 — "Weekend Guide" | `nightlife` |
+| Event | Goes to |
+|---|---|
+| `nightlife` (any day) | Thu — "Weekend Guide" |
+| `sports` on **Fri / Sat / Sun** | Thu — "Weekend Guide" |
+| `sports` on **Mon–Thu** (intramural, club, varsity alike) | Mon — "This Week at FAU" |
+| `campus`, `student_org` (any day) | Mon — "This Week at FAU" |
+| everything else | no post |
 
-This is a hard partition defined in `packages/core/src/logic/lanes.ts`. Bucket
-scores still rank events, but only *within* a lane — no score, tie-break or
-manual override can move an event across one. A nightlife promo in the campus
-post is worse than posting nothing, so the rule is enforced three times:
-`selectEventsForPost` filters by category before scoring, `force_include` is
-honoured only for in-lane events (out-of-lane forces are skipped and logged),
-and `assertLanePurity` re-checks immediately before anything is written to a
-post — throwing rather than shipping a mixed carousel.
+`laneForEvent()` in `packages/core/src/logic/lanes.ts` is the single authority,
+and it returns *at most one* lane per event — so the two posts are mutually
+exclusive by construction rather than by two filters agreeing with each other.
+
+The weekend test uses the **school's local day**, not UTC. A 9pm Friday kickoff
+in Florida is already 01:00 Saturday UTC, and a 9pm Thursday game is Friday
+UTC — judging in UTC would misfile a good share of the athletics calendar.
+
+Bucket scores still rank events, but only *within* a lane; no score, tie-break
+or manual override can move one across. A nightlife promo in the campus post is
+worse than posting nothing, so the rule is enforced three times:
+`selectEventsForPost` routes each event before scoring, `force_include` is
+honoured only for in-lane events (out-of-lane forces are skipped and logged
+with the lane they actually belong to), and `assertLanePurity` re-checks
+immediately before anything is written to a post — throwing rather than
+shipping a mixed carousel.
 
 **Categories in no lane** (`concert`, `party`, `food_drink`, `career`,
 `academic`, …) are deliberately never auto-posted. They still appear in the

@@ -1,55 +1,92 @@
+import { toZonedTime } from "date-fns-tz";
+import { parseISO } from "date-fns";
 import type { EventCategory, PostType } from "../types/enums.js";
 import type { BucketScores } from "../types/domain.js";
 
 export type PostBucket = keyof Omit<BucketScores, "overall">;
 
 /**
- * The weekly posting lanes and the ONLY event categories each one may
- * contain. This is a hard partition, not a preference: bucket scores rank
- * events *within* a lane, but they can never move an event across lanes.
- * That separation is a product requirement — a nightlife promo appearing in
- * the campus post (or vice versa) is worse than posting nothing at all, so
- * category membership is enforced as a filter at selection time and
- * re-asserted before anything is written to a post (see assertLanePurity).
- *
- * Categories listed in no lane are intentionally never auto-posted; they can
- * still be surfaced to a human and force-included from the dashboard.
+ * Friday, Saturday, Sunday — the days the Thursday "Weekend Guide" is
+ * previewing. Sunday is 0 in JS's getDay(), so this is [5, 6, 0].
  */
+const WEEKEND_DAYS = new Set([5, 6, 0]);
+
 export interface PostLane {
   postType: PostType;
   bucket: PostBucket;
+  /** Every category that may EVER appear in this lane. Some are conditional
+   * (sports lands here only on certain days) — laneForEvent is the
+   * authority, this list is for UI/docs and coarse filtering. */
   categories: readonly EventCategory[];
 }
 
-export const POST_LANES: readonly PostLane[] = [
-  {
-    postType: "monday_campus",
-    bucket: "mondayCampus",
-    // Campus life + anything the athletics department puts on.
-    categories: ["campus", "student_org", "sports"],
-  },
-  {
-    postType: "thursday_nightlife",
-    bucket: "thursdayNightlife",
-    // Strictly nightlife. Sources that only ever produce nightlife (Posh.vip)
-    // pin their events to this category at ingest via metadata.forceCategory,
-    // so their events can only ever land here.
-    categories: ["nightlife"],
-  },
-] as const;
+export const MONDAY_CAMPUS_LANE: PostLane = {
+  postType: "monday_campus",
+  bucket: "mondayCampus",
+  categories: ["campus", "student_org", "sports"],
+};
+
+export const THURSDAY_NIGHTLIFE_LANE: PostLane = {
+  postType: "thursday_nightlife",
+  bucket: "thursdayNightlife",
+  // Nightlife always; sports only when the game falls on the weekend.
+  categories: ["nightlife", "sports"],
+};
+
+export const POST_LANES: readonly PostLane[] = [MONDAY_CAMPUS_LANE, THURSDAY_NIGHTLIFE_LANE] as const;
+
+export interface LaneEvent {
+  category: EventCategory;
+  /** ISO timestamp of the event's start. */
+  startAt: string;
+  /** IANA timezone of the school the event belongs to. */
+  timezone: string;
+}
+
+/** True when the event starts on a Fri/Sat/Sun *in the school's local time*.
+ * Evaluating this in UTC would misfile most of them — a 9pm Friday kickoff
+ * in Florida is already Saturday 01:00 UTC. */
+export function isWeekendEvent(startAt: string, timezone: string): boolean {
+  return WEEKEND_DAYS.has(toZonedTime(parseISO(startAt), timezone).getDay());
+}
+
+/**
+ * The single lane an event belongs to, or undefined when its category is
+ * not auto-posted at all.
+ *
+ * Routing is a function of category *and* timing, not category alone:
+ *
+ *   nightlife              → Thursday, always
+ *   sports (Fri/Sat/Sun)   → Thursday — weekend games are weekend plans
+ *   sports (Mon-Thu)       → Monday — intramural, club and varsity alike
+ *   campus, student_org    → Monday, always
+ *   everything else        → no lane (never auto-posted)
+ *
+ * Because every event resolves to at most one lane here, the lanes are
+ * mutually exclusive by construction — there is no way for the same event
+ * to satisfy two lanes' rules and appear in both posts.
+ */
+export function laneForEvent(event: LaneEvent): PostLane | undefined {
+  switch (event.category) {
+    case "nightlife":
+      return THURSDAY_NIGHTLIFE_LANE;
+    case "sports":
+      return isWeekendEvent(event.startAt, event.timezone) ? THURSDAY_NIGHTLIFE_LANE : MONDAY_CAMPUS_LANE;
+    case "campus":
+    case "student_org":
+      return MONDAY_CAMPUS_LANE;
+    default:
+      return undefined;
+  }
+}
 
 export function laneForPostType(postType: string): PostLane | undefined {
   return POST_LANES.find((l) => l.postType === postType);
 }
 
-/** The lane an event belongs to, or undefined when its category is not
- * auto-posted in any lane. */
-export function laneForCategory(category: EventCategory): PostLane | undefined {
-  return POST_LANES.find((l) => l.categories.includes(category));
-}
-
-export function isCategoryAllowedInLane(postType: string, category: EventCategory): boolean {
-  return laneForPostType(postType)?.categories.includes(category) ?? false;
+/** Whether this specific event may appear in this specific post. */
+export function isEventAllowedInLane(postType: string, event: LaneEvent): boolean {
+  return laneForEvent(event)?.postType === postType;
 }
 
 export class LanePurityError extends Error {
@@ -58,9 +95,8 @@ export class LanePurityError extends Error {
     readonly offenders: { id: string; category: EventCategory }[],
   ) {
     super(
-      `Refusing to build "${postType}": ${offenders.length} event(s) whose category is not allowed in this lane ` +
-        `(${offenders.map((o) => `${o.id}=${o.category}`).join(", ")}). Allowed: ` +
-        `${laneForPostType(postType)?.categories.join(", ") ?? "(no such lane)"}.`,
+      `Refusing to build "${postType}": ${offenders.length} event(s) that do not route to this lane ` +
+        `(${offenders.map((o) => `${o.id}=${o.category}`).join(", ")}).`,
     );
     this.name = "LanePurityError";
   }
@@ -68,11 +104,11 @@ export class LanePurityError extends Error {
 
 /**
  * Final gate before events are written into a post. Selection already
- * filters by category, so reaching this with an offender means a bug or a
+ * routes by lane, so reaching this with an offender means a bug or a
  * hand-forced event slipped through — either way the post must not ship
  * mixed content, so this throws rather than silently dropping.
  */
-export function assertLanePurity(postType: string, events: { id: string; category: EventCategory }[]): void {
-  const offenders = events.filter((e) => !isCategoryAllowedInLane(postType, e.category));
+export function assertLanePurity(postType: string, events: (LaneEvent & { id: string })[]): void {
+  const offenders = events.filter((e) => !isEventAllowedInLane(postType, e));
   if (offenders.length > 0) throw new LanePurityError(postType, offenders);
 }

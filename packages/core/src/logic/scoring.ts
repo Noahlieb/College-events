@@ -73,8 +73,10 @@ const CATEGORY_APPEAL: Record<EventCategory, number> = {
  * How well each category fits each weekly post bucket, as a multiplier.
  *
  * These only rank events *within* a lane. Which lane an event may appear in
- * at all is decided by hard category membership in logic/lanes.ts — so the
- * near-zero cross-lane values here are belt-and-braces, not the mechanism.
+ * at all is decided by logic/lanes.ts — so the near-zero cross-lane values
+ * here are belt-and-braces, not the mechanism. Note `sports` scores well in
+ * BOTH real buckets on purpose: lanes route a game by the day it falls on,
+ * so the same event needs a competitive score in whichever post claims it.
  * `midweekActivity` is retained so previously-scored rows keep their shape,
  * but no lane consumes it any more (the midweek post was removed).
  */
@@ -119,13 +121,15 @@ const BUCKET_AFFINITY: Record<keyof Omit<BucketScores, "overall">, Record<EventC
   },
   thursdayNightlife: {
     nightlife: 1.15,
+    // Weekend games are weekend plans — lanes.ts sends Fri/Sat/Sun sports
+    // here, so they must rank alongside nightlife rather than be buried.
+    sports: 1.05,
     party: 1.05,
     concert: 0.65,
     comedy: 0.55,
     food_drink: 0.45,
     dating: 0.55,
     festival: 0.45,
-    sports: 0.2,
     campus: 0.05,
     student_org: 0.1,
     career: 0.05,

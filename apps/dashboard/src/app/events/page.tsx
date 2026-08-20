@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, events } from "@college-events/db";
-import { laneForCategory } from "@college-events/core";
+import { laneForEvent } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
 import { approveEventAction, forceIncludeEventAction, rejectEventAction } from "@/lib/actions";
 
@@ -111,7 +111,11 @@ export default async function EventsPage({
                   <td>{e.category.replace("_", " ")}</td>
                   <td>
                     {(() => {
-                      const lane = laneForCategory(e.category);
+                      const lane = laneForEvent({
+                        category: e.category,
+                        startAt: e.startAt.toISOString(),
+                        timezone: school.timezone,
+                      });
                       return lane ? (
                         <span className="badge badge-blue">{LANE_LABEL[lane.postType] ?? lane.postType}</span>
                       ) : (

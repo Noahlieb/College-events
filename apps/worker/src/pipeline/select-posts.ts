@@ -1,6 +1,13 @@
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db, events, postEvents, posts, schools } from "@college-events/db";
-import { assertLanePurity, laneForPostType, selectEventsForPost, type WeeklyScheduleSlot } from "@college-events/core";
+import {
+  assertLanePurity,
+  isEventAllowedInLane,
+  laneForEvent,
+  laneForPostType,
+  selectEventsForPost,
+  type WeeklyScheduleSlot,
+} from "@college-events/core";
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
@@ -70,8 +77,9 @@ export async function selectWeeklyPosts(
     }));
 
     const selected = selectEventsForPost(selectable, {
+      postType: slot.postType,
       bucket: lane.bucket,
-      allowedCategories: lane.categories,
+      timezone: school.timezone,
       maxSlides: MAX_SLIDES_PER_POST,
       now: referenceDate,
     });
@@ -86,14 +94,16 @@ export async function selectWeeklyPosts(
     const forcedInLane: typeof weekEvents = [];
     for (const e of weekEvents) {
       if (selectedIds.has(e.id) || !e.flags.includes("force_include")) continue;
-      if (lane.categories.includes(e.category)) {
+      const laneEvent = { category: e.category, startAt: e.startAt.toISOString(), timezone: school.timezone };
+      if (isEventAllowedInLane(slot.postType, laneEvent)) {
         forcedInLane.push(e);
       } else {
         await log(
           schoolId,
           "warn",
           "select_posts",
-          `Ignoring force_include for event ${e.id} (${e.category}) in ${slot.postType}: category not allowed in this lane.`,
+          `Ignoring force_include for event ${e.id} (${e.category}) in ${slot.postType}: it routes to ` +
+            `${laneForEvent(laneEvent)?.postType ?? "no post"} instead.`,
           { eventId: e.id },
         );
       }
@@ -106,7 +116,15 @@ export async function selectWeeklyPosts(
     // Last gate before anything is written. Selection and the force_include
     // path above both filter by category already, so a failure here means a
     // logic bug — better to abort this post than publish mixed content.
-    assertLanePurity(slot.postType, selectedEvents);
+    assertLanePurity(
+      slot.postType,
+      selectedEvents.map((e) => ({
+        id: e.id,
+        category: e.category,
+        startAt: e.startAt.toISOString(),
+        timezone: school.timezone,
+      })),
+    );
 
     const scheduledDate = scheduledDateFor(weekMonday, slot);
 
