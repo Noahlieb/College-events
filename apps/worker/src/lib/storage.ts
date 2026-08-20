@@ -56,9 +56,17 @@ export async function saveAsset(relativePath: string, buffer: Buffer): Promise<s
     const bucket = process.env.SUPABASE_STORAGE_BUCKET || "college-events-media";
     const storagePath = relativePath.split(path.sep).join("/");
     const contentType = CONTENT_TYPES[path.extname(relativePath).toLowerCase()] ?? "application/octet-stream";
+    // cacheControl: "0" — every rendered asset is overwritten in place at a
+    // deterministic path (upsert) whenever a post is re-rendered, and
+    // Supabase Storage sits behind a CDN that caches by path, not by the
+    // request URL. A client-side cache-busting query param (see
+    // toDisplayUrl in the dashboard) only defeats the *browser's* cache;
+    // without this, the CDN edge would keep serving the pre-re-render
+    // bytes from the same path for up to an hour (the SDK's default)
+    // regardless of what query string the client appends.
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(storagePath, buffer, { contentType, upsert: true });
+      .upload(storagePath, buffer, { contentType, upsert: true, cacheControl: "0" });
     if (error) {
       throw new Error(`Supabase Storage upload failed for "${storagePath}" (bucket "${bucket}"): ${error.message}`);
     }
