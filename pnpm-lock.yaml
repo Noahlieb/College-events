@@ -56,9 +56,15 @@ importers:
 
   apps/render-service:
     dependencies:
+      '@college-events/render':
+        specifier: workspace:*
+        version: link:../../packages/render
       '@college-events/worker':
         specifier: workspace:*
         version: link:../worker
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^22.9.0

@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { renderPost } from "@college-events/worker/dist/pipeline/render.js";
+import sharp from "sharp";
+import { textPathElement } from "@college-events/render/dist/textLayout.js";
+import { displayFont } from "@college-events/render/dist/fonts.js";
 
 /**
  * Standalone Vercel Function (NOT part of the Next.js dashboard's build) for
@@ -37,7 +40,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { postId } = (req.body ?? {}) as { postId?: unknown };
+  const body = (req.body ?? {}) as { postId?: unknown; diagnostic?: unknown };
+
+  // TEMPORARY: isolated test bypassing the whole render pipeline — draws a
+  // single glyph path directly and returns the raw JPEG bytes (base64) plus
+  // sharp's own library versions, to see exactly what one minimal path
+  // renders as in production with zero other pipeline variables involved.
+  if (body.diagnostic) {
+    try {
+      const font = displayFont();
+      const pathEl = textPathElement(font, "A", 60, 260, 200, { fill: "#000000" });
+      const svg = `<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg"><rect width="300" height="300" fill="#FFFFFF"/>${pathEl}</svg>`;
+      const jpeg = await sharp(Buffer.from(svg)).jpeg({ quality: 95 }).toBuffer();
+      res.status(200).json({
+        buildMarker: BUILD_MARKER,
+        sharpVersions: sharp.versions,
+        platform: process.platform,
+        arch: process.arch,
+        nodeVersion: process.version,
+        svgSample: svg,
+        imageBase64: jpeg.toString("base64"),
+      });
+    } catch (err) {
+      console.error("diagnostic render failed:", err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+    return;
+  }
+
+  const { postId } = body;
   if (!postId || typeof postId !== "string") {
     res.status(400).json({ error: "postId (string) is required in the request body" });
     return;
