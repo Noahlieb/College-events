@@ -2,6 +2,7 @@ export * from "./pipeline/ingest.js";
 export * from "./pipeline/process.js";
 export * from "./pipeline/select-posts.js";
 export * from "./pipeline/render.js";
+export * from "./pipeline/render-all.js";
 export * from "./pipeline/approve.js";
 export * from "./pipeline/schedule.js";
 export * from "./pipeline/manual.js";

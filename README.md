@@ -27,6 +27,7 @@ IMAGE/SLIDE GENERATION → CAPTION GENERATION → HUMAN APPROVAL → SCHEDULER �
 - [Adding a new school](#adding-a-new-school)
 - [Adding a new source](#adding-a-new-source)
 - [Posting lanes](#posting-lanes)
+- [Daily automation](#daily-automation)
 - [Orchestration with n8n](#orchestration-with-n8n)
 - [Testing](#testing)
 - [Deploying](#deploying)
@@ -405,6 +406,75 @@ recategorizing alone would route it correctly but rank it as though it were
 still out of place. It's a worker command rather than a SQL migration because
 that rescoring needs the real `scoreEvent` logic — porting it to SQL would leave
 two copies of the business rule to drift apart. Safe to re-run.
+
+## Daily automation
+
+`.github/workflows/daily.yml` runs the whole pipeline every morning at
+**08:00 America/New_York**, unattended:
+
+1. **Scrape** — `scrapers/scrape_owlcentral.py` and `scrapers/scrape_posh.py`
+   (see [scrapers/README.md](scrapers/README.md))
+2. **Import** their CSVs via `import-csv`
+3. **Ingest** the adapter-backed sources — FAU Athletics needs no scraper,
+   it's polled natively
+4. **Process** — AI extraction, dedup, categorize, score
+5. **Select posts** — rebuild the current week and the next three
+6. **Render** — regenerate images for every post that can still change
+
+GitHub's cron only speaks UTC, and 8am Eastern is 12:00 UTC in summer but
+13:00 UTC in winter. Both times are scheduled and the first step exits the
+one that isn't actually 08:00 locally, so the run doesn't drift an hour
+twice a year.
+
+The three scrape/ingest steps use `continue-on-error`: one site changing
+its markup shouldn't cost you the whole day's run from the other two
+sources. Their outcomes are reported in the workflow summary. The steps
+that follow are not tolerant — if `process` or `select-posts` fails, the
+run fails loudly, because a half-built post is worse than no new post.
+
+Run it by hand any time from the Actions tab ("Run workflow"), which
+skips the time gate.
+
+### Required GitHub secrets
+
+Settings → Secrets and variables → Actions:
+
+| Secret | Notes |
+|---|---|
+| `DATABASE_URL` | Same Supabase connection string as `.env` |
+| `SUPABASE_URL` | |
+| `SUPABASE_SERVICE_ROLE_KEY` | |
+| `SUPABASE_STORAGE_BUCKET` | e.g. `college-events-media` |
+| `AI_PROVIDER` | Optional; defaults to `mock` |
+| `ANTHROPIC_API_KEY` | Only if `AI_PROVIDER=anthropic` |
+
+Rendering happens inside the workflow via `renderPost` directly, so
+`RENDER_SERVICE_URL`/`RENDER_SERVICE_SECRET` are **not** needed here —
+those exist only so the dashboard's Render button can reach a service that
+can run `sharp`.
+
+### Rolling four-week posts
+
+`select-posts` builds the current week plus the next three. Every unlocked
+post is rebuilt from scratch on each run, so an event scraped today for
+three weeks out lands in that week's post immediately and keeps absorbing
+newly-found events each morning.
+
+Two behaviours worth knowing:
+
+- **Approving freezes a post.** Approved/scheduled/published posts are
+  never rebuilt — that's what stops automation from overwriting something
+  you curated. If you approve a post three weeks early, it stops picking up
+  new events. Approve close to the date, or re-run selection after
+  un-approving.
+- **Far-future posts start sparse and fill in.** Relevance scoring weights
+  timing, so an event three weeks out scores lower than the same event
+  three days out and a marginal one can sit below the selection cutoff
+  until its week approaches. Strong events appear immediately; weaker ones
+  surface as the date nears.
+
+Posts are only created once at least one event lands in that week, so
+future weeks don't clutter the dashboard with empty drafts.
 
 ## Orchestration with n8n
 

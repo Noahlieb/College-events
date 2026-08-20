@@ -14,6 +14,14 @@ import { mondayOfWeek } from "../lib/week.js";
 
 const MAX_SLIDES_PER_POST = 8;
 
+/**
+ * How many weeks past the current one to build posts for. Posts for future
+ * weeks are real, editable rows from the moment a single event lands in
+ * them, so an event scraped today for three weeks out immediately starts
+ * assembling its post instead of appearing the week it happens.
+ */
+const DEFAULT_WEEKS_AHEAD = 3;
+
 export interface PostBuildResult {
   postId: string;
   postType: string;
@@ -30,22 +38,58 @@ function scheduledDateFor(weekMonday: Date, slot: WeeklyScheduleSlot): string {
 }
 
 /**
- * Builds/refreshes this week's carousel posts for a school (spec §19/§20).
- * One post per slot in the school's weeklySchedule, each drawing from the
- * SAME pool of this-week active events but ranked by that slot's own
- * bucket score — a nightlife event naturally sorts to the top of Thursday
- * and to the bottom of Monday. Never pads a post with weak events just to
- * hit the slide cap; a post with fewer strong events ships with fewer slides.
+ * Builds/refreshes carousel posts for the current week and the next
+ * `weeksAhead` weeks (spec §19/§20). One post per lane per week, each
+ * drawing only from events falling inside that week and ranked by the
+ * lane's own bucket score. Never pads a post with weak events just to hit
+ * the slide cap; a post with fewer strong events ships with fewer slides.
+ *
+ * Safe and expected to re-run — every unlocked post is rebuilt from
+ * scratch on each run, so newly-scraped events flow into their week's post
+ * automatically. Posts a human has already approved/scheduled/published
+ * are left untouched, so a rebuild can never overwrite curated content.
  */
 export async function selectWeeklyPosts(
   schoolId: string,
   aiProvider: AIProvider = createAIProvider(),
   referenceDate: Date = new Date(),
+  weeksAhead: number = DEFAULT_WEEKS_AHEAD,
 ): Promise<PostBuildResult[]> {
   const [school] = await db.select().from(schools).where(eq(schools.id, schoolId)).limit(1);
   if (!school) throw new Error(`Unknown school ${schoolId}`);
 
-  const weekMonday = mondayOfWeek(referenceDate);
+  const currentMonday = mondayOfWeek(referenceDate);
+  const results: PostBuildResult[] = [];
+
+  for (let weekOffset = 0; weekOffset <= weeksAhead; weekOffset++) {
+    const weekMonday = new Date(currentMonday);
+    weekMonday.setUTCDate(weekMonday.getUTCDate() + weekOffset * 7);
+    results.push(...(await buildWeek({ schoolId, school, aiProvider, referenceDate, weekMonday })));
+  }
+
+  return results;
+}
+
+interface BuildWeekArgs {
+  schoolId: string;
+  school: typeof schools.$inferSelect;
+  aiProvider: AIProvider;
+  referenceDate: Date;
+  weekMonday: Date;
+}
+
+/**
+ * Builds/refreshes every lane's post for ONE week. Split out from
+ * selectWeeklyPosts so the horizon loop above stays readable, and so each
+ * week's event pool is scoped to that week rather than leaking across.
+ */
+async function buildWeek({
+  schoolId,
+  school,
+  aiProvider,
+  referenceDate,
+  weekMonday,
+}: BuildWeekArgs): Promise<PostBuildResult[]> {
   const weekEnd = new Date(weekMonday);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
 
@@ -146,6 +190,12 @@ export async function selectWeeklyPosts(
       });
       continue;
     }
+
+    // Don't conjure empty rows for future weeks nothing has landed in yet —
+    // with a multi-week horizon that would fill the dashboard with blank
+    // drafts. An existing post that has emptied out is still updated below,
+    // so a post never silently keeps stale events.
+    if (selectedEvents.length === 0 && !existingPost) continue;
 
     const hasNeedsReview = selectedEvents.some((e) => e.verificationStatus === "needs_review");
     const status = selectedEvents.length === 0 ? "draft" : hasNeedsReview ? "needs_review" : "ready_for_approval";

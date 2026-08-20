@@ -1,0 +1,3 @@
+# Pinned so a daily unattended run can't break on an upstream release.
+certifi==2024.8.30
+playwright==1.48.0

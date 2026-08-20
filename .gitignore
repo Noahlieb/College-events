@@ -10,3 +10,8 @@ coverage/
 storage/
 *.tsbuildinfo
 .turbo/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

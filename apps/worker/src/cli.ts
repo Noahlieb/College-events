@@ -6,6 +6,7 @@ import { ingestSchoolSources } from "./pipeline/ingest.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
+import { renderAllPosts } from "./pipeline/render-all.js";
 import { approvePost, rejectPost } from "./pipeline/approve.js";
 import { schedulePost } from "./pipeline/schedule.js";
 import { importPhantomBusterResults } from "./pipeline/phantombuster.js";
@@ -29,11 +30,14 @@ Commands:
                                             Launch a PhantomBuster agent via API, wait for it,
                                             and import its results automatically (no manual file)
   process [school]                         Run AI extraction/scoring/dedup over pending raw_content
-  select-posts [school]                    Build/refresh this week's posts (Mon campus, Thu nightlife)
+  select-posts [school]                    Build/refresh posts for this week + the next 3 (Mon campus,
+                                            Thu nightlife); safe to re-run, skips approved posts
   backfill-lanes [school] [--dry-run]      Bring an existing DB in line with the current lane rules:
                                             prune dead schedule slots, pin single-purpose sources to
                                             their category, recategorize + rescore their past events
   render <postId>                          Render a post's branded carousel
+  render-all [school]                      Re-render every current/future post that can still change
+                                            (skips published posts and past weeks)
   approve <postId> <approvedBy>            Approve a post for scheduling
   reject <postId> <reason> <rejectedBy>    Reject a post
   schedule <postId>                        Send an approved post to the scheduler (Buffer/mock)
@@ -95,6 +99,17 @@ async function main() {
       const summary = await backfillLanes(schoolId, dryRun);
       console.log(dryRun ? "DRY RUN — nothing written:" : "Applied:");
       console.log(summary);
+      break;
+    }
+    case "render-all": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const results = await renderAllPosts(schoolId);
+      console.table(results);
+      const failed = results.filter((r) => r.error).length;
+      if (failed > 0) {
+        console.error(`${failed} of ${results.length} post(s) failed to render.`);
+        process.exitCode = 1;
+      }
       break;
     }
     case "render": {
