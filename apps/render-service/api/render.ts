@@ -16,7 +16,15 @@ import { renderPost } from "@college-events/worker/dist/pipeline/render.js";
  * The dashboard's render-action.ts calls this over HTTP instead of
  * importing renderPost directly.
  */
+// TEMPORARY diagnostic marker — bump this string on every deploy under
+// investigation so we can prove, from the response body itself (not logs,
+// which have been unreliable here), exactly which build actually served a
+// given request.
+const BUILD_MARKER = "font-fix-diagnostic-2026-08-20-01";
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.error(`[render.ts] handler invoked, BUILD_MARKER=${BUILD_MARKER}`);
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -37,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await renderPost(postId);
-    res.status(200).json(result);
+    res.status(200).json({ ...result, buildMarker: BUILD_MARKER });
   } catch (err) {
     // console.error so Vercel's runtime logs actually capture this, not just
     // the JSON response body — the previous version only did the latter,
