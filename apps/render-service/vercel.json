@@ -1,10 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @college-events/worker... build",
-  "functions": {
-    "api/render.ts": {
-      "includeFiles": "../../packages/render/src/glyph-data/**"
-    }
-  }
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm --filter @college-events/worker... build"
 }

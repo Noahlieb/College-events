@@ -23,7 +23,7 @@ import { displayFont } from "@college-events/render/dist/fonts.js";
 // investigation so we can prove, from the response body itself (not logs,
 // which have been unreliable here), exactly which build actually served a
 // given request.
-const BUILD_MARKER = "font-fix-diagnostic-2026-08-20-01";
+const BUILD_MARKER = "embedded-glyphs-uploaded-dist-02";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.error(`[render.ts] handler invoked, BUILD_MARKER=${BUILD_MARKER}`);

@@ -19,6 +19,9 @@
     "dashboard": "pnpm --filter @college-events/dashboard dev",
     "demo": "pnpm --filter @college-events/worker demo"
   },
+  "devDependencies": {
+    "vercel": "^59.1.4"
+  },
   "pnpm": {
     "overrides": {
       "sharp": "^0.33.5"
