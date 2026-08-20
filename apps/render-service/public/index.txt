@@ -1,0 +1,1 @@
+Static placeholder. This project is functions-only (api/render.ts); Vercel requires an output directory to exist when a buildCommand is configured.
