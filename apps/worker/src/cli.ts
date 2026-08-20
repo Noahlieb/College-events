@@ -12,6 +12,7 @@ import { importPhantomBusterResults } from "./pipeline/phantombuster.js";
 import { runLivePhantomBusterIngest } from "./pipeline/phantombuster-live.js";
 import { submitManualEvent } from "./pipeline/manual.js";
 import { importCsvEvents } from "./pipeline/csv-import.js";
+import { backfillLanes } from "./pipeline/backfill-lanes.js";
 import { runDemo } from "./demo.js";
 import { eq } from "drizzle-orm";
 import { db, sources } from "@college-events/db";
@@ -28,7 +29,10 @@ Commands:
                                             Launch a PhantomBuster agent via API, wait for it,
                                             and import its results automatically (no manual file)
   process [school]                         Run AI extraction/scoring/dedup over pending raw_content
-  select-posts [school]                    Build/refresh this week's posts (Monday/Wed/Thu)
+  select-posts [school]                    Build/refresh this week's posts (Mon campus, Thu nightlife)
+  backfill-lanes [school] [--dry-run]      Bring an existing DB in line with the current lane rules:
+                                            prune dead schedule slots, pin single-purpose sources to
+                                            their category, recategorize + rescore their past events
   render <postId>                          Render a post's branded carousel
   approve <postId> <approvedBy>            Approve a post for scheduling
   reject <postId> <reason> <rejectedBy>    Reject a post
@@ -83,6 +87,14 @@ async function main() {
       const schoolId = await resolveSchoolId(args[0] ?? "FAU");
       const summary = await selectWeeklyPosts(schoolId);
       console.table(summary);
+      break;
+    }
+    case "backfill-lanes": {
+      const dryRun = args.includes("--dry-run");
+      const schoolId = await resolveSchoolId(args.find((a) => !a.startsWith("--")) ?? "FAU");
+      const summary = await backfillLanes(schoolId, dryRun);
+      console.log(dryRun ? "DRY RUN — nothing written:" : "Applied:");
+      console.log(summary);
       break;
     }
     case "render": {

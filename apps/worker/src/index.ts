@@ -6,6 +6,7 @@ export * from "./pipeline/approve.js";
 export * from "./pipeline/schedule.js";
 export * from "./pipeline/manual.js";
 export * from "./pipeline/csv-import.js";
+export * from "./pipeline/backfill-lanes.js";
 export * from "./pipeline/phantombuster.js";
 export * from "./pipeline/phantombuster-live.js";
 export * from "./lib/resolve-school.js";

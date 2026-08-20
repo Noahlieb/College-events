@@ -26,6 +26,7 @@ IMAGE/SLIDE GENERATION → CAPTION GENERATION → HUMAN APPROVAL → SCHEDULER �
 - [The admin dashboard](#the-admin-dashboard)
 - [Adding a new school](#adding-a-new-school)
 - [Adding a new source](#adding-a-new-source)
+- [Posting lanes](#posting-lanes)
 - [Orchestration with n8n](#orchestration-with-n8n)
 - [Testing](#testing)
 - [Deploying](#deploying)
@@ -202,7 +203,7 @@ pnpm worker ingest:phantombuster [school] path/to/scrape-result.json
 # 2. AI extraction/scoring/dedup over everything sitting at `pending`
 pnpm worker process [school]
 
-# 3. Build/refresh this week's 3 posts (Monday/Wed/Thu) from active events
+# 3. Build/refresh this week's 2 posts (Mon campus, Thu nightlife) from active events
 pnpm worker select-posts [school]
 
 # 4. Render one post's branded carousel (cover + one slide per event)
@@ -295,7 +296,7 @@ pnpm dashboard   # http://localhost:3000, HTTP Basic Auth via ADMIN_USERNAME/PAS
   `select-posts` (in production these run on a schedule — see n8n below).
 - **Events** — full inventory with filters, per-event Approve/Reject/Force-include,
   and a detail page to edit fields or merge a duplicate into a primary event.
-- **Weekly Posts** — one row per Monday/Wed/Thu post; open a post to see the
+- **Weekly Posts** — one row per Monday/Thursday post; open a post to see the
   rendered carousel preview, the generated caption, and Approve/Reject/Render/
   Send-to-scheduler actions.
 - **Sources** — table of every configured source with health status, plus an
@@ -337,6 +338,62 @@ handle, priority 1-10, scrape frequency) — no code or redeploy needed. Priorit
 matters: it feeds `computeVerificationStatus` (spec §16) — two priority-6+ sources
 agreeing on an event marks it `VERIFIED`; a single low-priority source stays
 `NEEDS_REVIEW`.
+
+## Posting lanes
+
+Two posts go out per week, and which one an event can appear in is decided by
+its **category**, not by its score:
+
+| Lane | Post | Categories it may contain |
+|---|---|---|
+| `monday_campus` | Mon 9:00 — "This Week at FAU" | `campus`, `student_org`, `sports` |
+| `thursday_nightlife` | Thu 15:00 — "Weekend Guide" | `nightlife` |
+
+This is a hard partition defined in `packages/core/src/logic/lanes.ts`. Bucket
+scores still rank events, but only *within* a lane — no score, tie-break or
+manual override can move an event across one. A nightlife promo in the campus
+post is worse than posting nothing, so the rule is enforced three times:
+`selectEventsForPost` filters by category before scoring, `force_include` is
+honoured only for in-lane events (out-of-lane forces are skipped and logged),
+and `assertLanePurity` re-checks immediately before anything is written to a
+post — throwing rather than shipping a mixed carousel.
+
+**Categories in no lane** (`concert`, `party`, `food_drink`, `career`,
+`academic`, …) are deliberately never auto-posted. They still appear in the
+events table, tagged `no post`, and can be force-included by hand.
+
+### Pinning a single-purpose source
+
+Some sources only ever produce one kind of event. Posh.vip is nightlife-only,
+so it pins its events rather than classifying them one by one:
+
+```sql
+UPDATE sources SET metadata = metadata || '{"forceCategory":"nightlife"}'::jsonb
+WHERE name = 'Posh.vip Nightlife';
+```
+
+This is more accurate than per-event classification *and* it is what guarantees
+those events can only reach the nightlife lane — without it, a club promo whose
+caption mentions "live music" classifies as `concert`, which belongs to no lane
+and would silently drop out of the schedule.
+
+### Applying lane rules to an existing database
+
+Seed data only covers fresh installs. For a database that predates the lanes:
+
+```bash
+pnpm worker backfill-lanes FAU --dry-run   # report what would change
+pnpm worker backfill-lanes FAU             # apply
+```
+
+It prunes schedule slots whose post type no longer has a lane (the retired
+midweek post), pins the sources listed above, and recategorizes **and rescores**
+their existing events. The rescore matters: an event stored as `concert` carries
+a nightlife bucket score computed with the wrong affinity multiplier, so
+recategorizing alone would route it correctly but rank it as though it were
+still out of place. It's a worker command rather than a SQL migration because
+that rescoring needs the real `scoreEvent` logic — porting it to SQL would leave
+two copies of the business rule to drift apart. Safe to re-run.
 
 ## Orchestration with n8n
 
