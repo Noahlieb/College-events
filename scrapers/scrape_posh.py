@@ -79,22 +79,28 @@ class CloudflareChallenge(RuntimeError):
     rather than reporting an empty result that reads like a quiet failure."""
 
 
-# How long to let a managed challenge clear before concluding the request is
-# blocked. Headless (CI): only long enough for Cloudflare's passive checks to
-# pass a request through on their own -- when they don't, waiting out the full
-# .EventCard timeout just burns CI minutes on a foregone conclusion. Headed: a
-# human is watching and can click the checkbox, which takes longer than any
-# automatic pass would.
-CHALLENGE_GRACE_SECONDS = 12
-HEADED_CHALLENGE_GRACE_SECONDS = 180
+# How long to wait for the listings to appear. Headed runs get much longer
+# because a human may need to clear a challenge by hand; headless runs get the
+# original timeout, since nobody is there to intervene.
+CONTENT_TIMEOUT_MS = 30000
+HEADED_CONTENT_TIMEOUT_MS = 180000
 
 
 def _looks_like_challenge(page) -> bool:
+    """Whether the browser is sitting on Cloudflare's interstitial.
+
+    Only consulted once the listings have failed to appear, to explain why.
+    It deliberately does NOT test for `window._cf_chl_opt`: Cloudflare leaves
+    that defined on normal pages too, so keying off it reports a challenge on
+    a page that loaded perfectly well."""
     try:
         if "just a moment" in (page.title() or "").lower():
             return True
         return bool(
-            page.evaluate("() => Boolean(window._cf_chl_opt || document.querySelector('[id^=cf-chl-widget]'))")
+            page.evaluate(
+                "() => Boolean(document.querySelector('[id^=cf-chl-widget]')"
+                " || document.querySelector('#challenge-error-text'))"
+            )
         )
     except Exception:
         return False
@@ -123,27 +129,33 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
         try:
             response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-            grace = CHALLENGE_GRACE_SECONDS if headless else HEADED_CHALLENGE_GRACE_SECONDS
-            deadline = time.time() + grace
-            if _looks_like_challenge(page) and not headless:
-                print(f"  Cloudflare challenge shown — solve it in the browser ({grace}s).", file=sys.stderr)
-            while _looks_like_challenge(page) and time.time() < deadline:
-                page.wait_for_timeout(1000)
-            if _looks_like_challenge(page):
-                _capture_debug(page, debug_dir, debug_label)
-                raise CloudflareChallenge(
-                    "posh.vip served a Cloudflare bot-management challenge instead of the listings"
+            # Success is the listings showing up -- nothing else. Waiting on the
+            # content directly means a challenge that clears (on its own, or
+            # because a human solved it in a headed run) just continues into a
+            # normal scrape, with no separate "are we challenged?" state to get
+            # wrong.
+            timeout = CONTENT_TIMEOUT_MS if headless else HEADED_CONTENT_TIMEOUT_MS
+            if not headless:
+                print(
+                    f"  Waiting up to {timeout // 1000}s for listings — if a challenge appears, solve it in the browser.",
+                    file=sys.stderr,
                 )
-
             try:
-                page.wait_for_selector(".EventCard", timeout=30000)
+                page.wait_for_selector(".EventCard", timeout=timeout)
             except Exception:
                 pass
+
             cards = page.evaluate(CARD_EXTRACT_JS)
             if not cards:
+                _capture_debug(page, debug_dir, debug_label)
+                # Only now ask *why* there's no content, so a page that loaded
+                # fine is never called blocked.
+                if _looks_like_challenge(page):
+                    raise CloudflareChallenge(
+                        "posh.vip served a Cloudflare bot-management challenge instead of the listings"
+                    )
                 status = response.status if response else "?"
                 print(f"  0 cards found (HTTP {status}, page title: {page.title()!r})", file=sys.stderr)
-                _capture_debug(page, debug_dir, debug_label)
             return cards
         finally:
             browser.close()
