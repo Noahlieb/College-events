@@ -35,12 +35,42 @@ export const THURSDAY_NIGHTLIFE_LANE: PostLane = {
 
 export const POST_LANES: readonly PostLane[] = [MONDAY_CAMPUS_LANE, THURSDAY_NIGHTLIFE_LANE] as const;
 
+/**
+ * Flag set on a sports event that is NOT played at home — SIDEARM's
+ * location_indicator of "A" (away) or "N" (neutral site). Neutral counts as
+ * away: a tournament three states over is no more attendable than a road game.
+ */
+export const AWAY_GAME_FLAG = "away_game";
+
+/**
+ * True only when the athletics feed affirmatively says a game is away ("A")
+ * or at a neutral site ("N").
+ *
+ * Anything else -- "H", empty, or absent entirely, as it is for every source
+ * that isn't the athletics feed -- returns false, leaving the event unflagged
+ * and postable. The asymmetry is the point: exclusion requires evidence, so a
+ * missing field can never quietly drop a real campus event.
+ */
+export function isAwayIndicator(indicator: unknown): boolean {
+  return typeof indicator === "string" && ["A", "N"].includes(indicator.trim().toUpperCase());
+}
+
 export interface LaneEvent {
   category: EventCategory;
   /** ISO timestamp of the event's start. */
   startAt: string;
   /** IANA timezone of the school the event belongs to. */
   timezone: string;
+  /**
+   * Whether a sports event is played at home. `false` excludes it from every
+   * lane; `true` and `undefined` both route normally.
+   *
+   * Undefined is deliberately permissive. Only the athletics feed reports
+   * home/away, so intramural and club sports arrive without it — and those
+   * are on campus by their nature. Treating "unknown" as "away" would delete
+   * exactly the campus sports this network exists to promote.
+   */
+  isHomeGame?: boolean | null;
 }
 
 /** True when the event starts on a Fri/Sat/Sun *in the school's local time*.
@@ -57,6 +87,7 @@ export function isWeekendEvent(startAt: string, timezone: string): boolean {
  * Routing is a function of category *and* timing, not category alone:
  *
  *   nightlife              → Thursday, always
+ *   sports, away/neutral   → no lane — a road game isn't something to attend
  *   sports (Fri/Sat/Sun)   → Thursday — weekend games are weekend plans
  *   sports (Mon-Thu)       → Monday — intramural, club and varsity alike
  *   campus, student_org    → Monday, always
@@ -71,6 +102,10 @@ export function laneForEvent(event: LaneEvent): PostLane | undefined {
     case "nightlife":
       return THURSDAY_NIGHTLIFE_LANE;
     case "sports":
+      // Away and neutral-site games are dropped before timing is considered:
+      // the post is a list of things to go to, and a game in another state
+      // is not one of them regardless of which day it lands on.
+      if (event.isHomeGame === false) return undefined;
       return isWeekendEvent(event.startAt, event.timezone) ? THURSDAY_NIGHTLIFE_LANE : MONDAY_CAMPUS_LANE;
     case "campus":
     case "student_org":

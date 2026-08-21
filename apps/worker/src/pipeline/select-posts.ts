@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db, events, postEvents, posts, schools } from "@college-events/db";
 import {
+  AWAY_GAME_FLAG,
   assertLanePurity,
   isEventAllowedInLane,
   laneForEvent,
@@ -13,6 +14,15 @@ import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
 
 const MAX_SLIDES_PER_POST = 8;
+
+/**
+ * Reads home/away back off an event's flags. Only the athletics feed knows
+ * this, so an unflagged event returns undefined ("unknown"), which lanes.ts
+ * treats as postable — see LaneEvent.isHomeGame.
+ */
+function isHomeGame(flags: string[]): boolean | undefined {
+  return flags.includes(AWAY_GAME_FLAG) ? false : undefined;
+}
 
 /**
  * How many weeks past the current one to build posts for. Posts for future
@@ -118,6 +128,7 @@ async function buildWeek({
       bucketScores: e.bucketScores,
       verificationStatus: e.verificationStatus,
       startAt: e.startAt.toISOString(),
+      isHomeGame: isHomeGame(e.flags),
     }));
 
     const selected = selectEventsForPost(selectable, {
@@ -138,7 +149,12 @@ async function buildWeek({
     const forcedInLane: typeof weekEvents = [];
     for (const e of weekEvents) {
       if (selectedIds.has(e.id) || !e.flags.includes("force_include")) continue;
-      const laneEvent = { category: e.category, startAt: e.startAt.toISOString(), timezone: school.timezone };
+      const laneEvent = {
+        category: e.category,
+        startAt: e.startAt.toISOString(),
+        timezone: school.timezone,
+        isHomeGame: isHomeGame(e.flags),
+      };
       if (isEventAllowedInLane(slot.postType, laneEvent)) {
         forcedInLane.push(e);
       } else {
@@ -167,6 +183,7 @@ async function buildWeek({
         category: e.category,
         startAt: e.startAt.toISOString(),
         timezone: school.timezone,
+        isHomeGame: isHomeGame(e.flags),
       })),
     );
 

@@ -7,6 +7,7 @@ import {
   isWeekendEvent,
   laneForEvent,
   laneForPostType,
+  isAwayIndicator,
 } from "./lanes.js";
 import { EVENT_CATEGORIES, type EventCategory } from "../types/enums.js";
 
@@ -169,5 +170,68 @@ describe("assertLanePurity", () => {
 
   it("accepts an empty post", () => {
     expect(() => assertLanePurity("thursday_nightlife", [])).not.toThrow();
+  });
+});
+
+describe("home games only", () => {
+  const game = (startAt: string, isHomeGame?: boolean | null) => ({
+    category: "sports" as EventCategory,
+    startAt,
+    timezone: TZ,
+    isHomeGame,
+  });
+
+  it("gives an away game no lane, whichever day it falls on", () => {
+    for (const d of [MON, TUE, WED, THU, FRI, SAT, SUN]) {
+      expect(laneForEvent(game(d, false))).toBeUndefined();
+    }
+  });
+
+  it("still routes home games by day", () => {
+    expect(laneForEvent(game(SAT, true))?.postType).toBe("thursday_nightlife");
+    expect(laneForEvent(game(TUE, true))?.postType).toBe("monday_campus");
+  });
+
+  it("treats unknown as postable, so intramurals aren't dropped", () => {
+    // Only the athletics feed reports home/away; club and intramural events
+    // arrive without it and are on campus by their nature.
+    expect(laneForEvent(game(SAT, undefined))?.postType).toBe("thursday_nightlife");
+    expect(laneForEvent(game(TUE, null))?.postType).toBe("monday_campus");
+  });
+
+  it("keeps an away game out of both posts", () => {
+    expect(isEventAllowedInLane("thursday_nightlife", game(SAT, false))).toBe(false);
+    expect(isEventAllowedInLane("monday_campus", game(TUE, false))).toBe(false);
+  });
+
+  it("refuses to build a post containing an away game", () => {
+    expect(() => assertLanePurity("thursday_nightlife", [{ id: "road-game", ...game(SAT, false) }])).toThrow(
+      LanePurityError,
+    );
+  });
+
+  it("does not affect non-sports categories", () => {
+    // isHomeGame is meaningless for a concert; it must not gate them.
+    expect(laneForEvent({ category: "nightlife", startAt: SAT, timezone: TZ, isHomeGame: false })?.postType).toBe(
+      "thursday_nightlife",
+    );
+    expect(laneForEvent({ category: "campus", startAt: TUE, timezone: TZ, isHomeGame: false })?.postType).toBe(
+      "monday_campus",
+    );
+  });
+});
+
+describe("isAwayIndicator", () => {
+  it("excludes only an affirmative away or neutral indicator", () => {
+    for (const away of ["A", "N", "a", "n", " A ", "N "]) {
+      expect(isAwayIndicator(away)).toBe(true);
+    }
+  });
+
+  it("treats home, blank and absent as postable", () => {
+    // Every source except the athletics feed omits this field entirely.
+    for (const ok of ["H", "h", "", "   ", null, undefined, 0, 123, {}, [], NaN]) {
+      expect(isAwayIndicator(ok)).toBe(false);
+    }
   });
 });

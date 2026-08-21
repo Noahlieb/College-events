@@ -17,6 +17,8 @@ import {
   parseEventDate,
   scoreEvent,
   type EventCategory,
+  AWAY_GAME_FLAG,
+  isAwayIndicator,
 } from "@college-events/core";
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles, isCampusAffiliated } from "../lib/geo-heuristic.js";
@@ -199,6 +201,10 @@ export async function processSchoolRawContent(
       const lowConfidence = extracted.confidence < 0.4;
       const status = verificationStatus === "conflict" || lowConfidence ? "candidate" : "active";
       const flags = lowConfidence ? ["low_confidence"] : [];
+      // Only the athletics feed reports where a game is played. Flagging it
+      // here rather than at selection keeps the fact with the event, so a
+      // road game stays excluded no matter which post later considers it.
+      if (isAwayIndicator(raw.rawMetadata?.locationIndicator)) flags.push(AWAY_GAME_FLAG);
 
       const [event] = await db
         .insert(events)
