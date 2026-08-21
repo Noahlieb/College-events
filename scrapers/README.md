@@ -9,10 +9,47 @@ workflow (`.github/workflows/daily.yml`) can run them on a schedule — when
 they ran only on a laptop via cron, fresh data depended on that laptop
 being awake.
 
-| Script | Source | Needs a browser? |
-|---|---|---|
-| `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP |
-| `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side |
+| Script | Source | Needs a browser? | Runs in CI? |
+|---|---|---|---|
+| `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | Yes |
+| `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
+
+## posh.vip is blocked from CI
+
+posh.vip runs Cloudflare bot management in front of `/explore`. Requests from
+GitHub Actions runners are served a managed challenge ("Performing security
+verification") instead of the listings, every time — datacenter IP ranges
+reliably trip it. Confirmed on 2026-08-21 for both FAU locations.
+
+**This is the site's deliberate access control, so the scraper does not try to
+defeat it** — no CAPTCHA-solving services, no fingerprint spoofing, no
+residential proxies. `robots.txt` permitting `/explore` does not override an
+active edge challenge.
+
+What the scraper does instead: it detects the challenge, gives it a short
+grace period in case it clears on its own, then stops with a clear "blocked by
+Cloudflare" message and exit code 3. The daily workflow marks that step
+`continue-on-error`, so Owl Central and FAU Athletics still flow into the
+day's posts; the run summary reports the block explicitly rather than
+reporting zero events.
+
+Getting nightlife events in, in order of preference:
+
+1. **Ask posh.vip for feed/API access.** The durable fix if they agree.
+2. **Import manually.** Run the scraper on your own machine with `--headed`.
+   A real browser window opens; if a challenge appears, solve it yourself and
+   the scrape continues (it waits up to 3 minutes for you). A residential IP
+   is also far less likely to be challenged than a CI runner to begin with:
+
+   ```bash
+   python scrapers/scrape_posh.py --headed --out-dir /tmp/scrape
+   pnpm worker import-csv FAU /tmp/scrape/college_events_import_fau.csv \
+     posh-scraper --source="Posh.vip Nightlife"
+   pnpm worker select-posts FAU && pnpm worker render-all FAU
+   ```
+3. **Enter events by hand** in the dashboard for the ones that matter.
+
+Re-importing is always safe — `import-csv` dedupes on name/date/venue.
 
 The third source, **FAU Athletics**, needs no scraper here: it has a native
 adapter in `packages/ingestion` (`sidearmAthleticsAdapter`) and is polled

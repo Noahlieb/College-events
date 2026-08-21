@@ -190,7 +190,11 @@ jobs:
             echo "| Owl Central | ${{ steps.owlcentral.outcome }} | $owl_count |"
             echo "| Posh.vip | ${{ steps.posh.outcome }} | $posh_count |"
             echo ""
-            if [ "$posh_count" -eq 0 ]; then
-              echo "⚠️ Posh.vip found 0 events. If this repeats, check the \`posh-debug-capture\` artifact on this run for a screenshot/HTML of what the scraper actually saw."
+            if [ -f "$SCRAPE_DIR/posh-blocked.txt" ]; then
+              echo "🚫 **Posh.vip was blocked by Cloudflare** — $(cat "$SCRAPE_DIR/posh-blocked.txt")"
+              echo ""
+              echo "posh.vip runs bot management in front of \`/explore\` and challenges automated traffic; GitHub Actions' datacenter IPs reliably trip it. This is the site's access control, not a bug — nightlife events need a manual import (see \`scrapers/README.md\`) or feed access from posh.vip."
+            elif [ "$posh_count" -eq 0 ]; then
+              echo "⚠️ Posh.vip found 0 events without being challenged — the page layout may have changed. Check the \`posh-debug-capture\` artifact for a screenshot/HTML of what the scraper saw."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
