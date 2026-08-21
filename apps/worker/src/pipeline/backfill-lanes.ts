@@ -2,7 +2,7 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import { db, events, eventSources, posts, rawContent, schools, sources } from "@college-events/db";
 import {
   AWAY_GAME_FLAG,
-  isAwayIndicator,
+  homeAwayForSportsEvent,
   EVENT_CATEGORIES,
   POST_LANES,
   daysUntil,
@@ -210,28 +210,33 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
       .where(inArray(rawContent.id, unflagged.map((e) => e.rawId)));
     const originalById = new Map(originals.map((r) => [r.id, r.rawMetadata]));
 
-    const indicatorsByEvent = new Map<string, unknown[]>();
+    const metaByEvent = new Map<string, Record<string, unknown>[]>();
     for (const link of links) {
-      const list = indicatorsByEvent.get(link.eventId) ?? [];
-      list.push(link.rawMetadata?.locationIndicator);
-      indicatorsByEvent.set(link.eventId, list);
+      const list = metaByEvent.get(link.eventId) ?? [];
+      list.push(link.rawMetadata ?? {});
+      metaByEvent.set(link.eventId, list);
     }
     for (const event of unflagged) {
-      const list = indicatorsByEvent.get(event.id) ?? [];
-      list.push(originalById.get(event.rawId)?.locationIndicator);
-      indicatorsByEvent.set(event.id, list);
+      const list = metaByEvent.get(event.id) ?? [];
+      list.push(originalById.get(event.rawId) ?? {});
+      metaByEvent.set(event.id, list);
     }
 
     for (const event of unflagged) {
-      const indicators = (indicatorsByEvent.get(event.id) ?? []).filter((v) => typeof v === "string" && v.trim());
-      if (indicators.length === 0) {
+      const metas = metaByEvent.get(event.id) ?? [{}];
+      // Any source saying "away" is enough; the name is the same fact for
+      // every one of them, so a single undefined among them means nothing.
+      const verdicts = metas.map((m) =>
+        homeAwayForSportsEvent({ name: event.name, atVs: m.atVs, locationIndicator: m.locationIndicator }),
+      );
+      if (verdicts.every((v) => v === undefined)) {
         summary.sportsEventsWithoutIndicator++;
         if (summary.sportsSampleWithoutIndicator.length < 15) {
           summary.sportsSampleWithoutIndicator.push({ name: event.name, source: event.sourceName });
         }
         continue;
       }
-      if (!indicators.some((v) => isAwayIndicator(v))) continue;
+      if (!verdicts.some((v) => v === false)) continue;
       summary.awayGamesFlagged++;
       summary.awayGamesFlaggedNames.push(event.name);
       if (!dryRun) {

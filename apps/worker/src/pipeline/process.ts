@@ -18,7 +18,7 @@ import {
   scoreEvent,
   type EventCategory,
   AWAY_GAME_FLAG,
-  isAwayIndicator,
+  homeAwayForSportsEvent,
 } from "@college-events/core";
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles, isCampusAffiliated } from "../lib/geo-heuristic.js";
@@ -204,7 +204,16 @@ export async function processSchoolRawContent(
       // Only the athletics feed reports where a game is played. Flagging it
       // here rather than at selection keeps the fact with the event, so a
       // road game stays excluded no matter which post later considers it.
-      if (isAwayIndicator(raw.rawMetadata?.locationIndicator)) flags.push(AWAY_GAME_FLAG);
+      if (
+        category === "sports" &&
+        homeAwayForSportsEvent({
+          name: extracted.event_name,
+          atVs: raw.rawMetadata?.atVs,
+          locationIndicator: raw.rawMetadata?.locationIndicator,
+        }) === false
+      ) {
+        flags.push(AWAY_GAME_FLAG);
+      }
 
       const [event] = await db
         .insert(events)
