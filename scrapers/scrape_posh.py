@@ -454,10 +454,11 @@ def main() -> None:
         detail = ", ".join(f"{name} ({n}/{of} locations)" for name, n, of in blocked_schools)
         print(
             f"\nCloudflare blocked: {detail}.\n"
-            "posh.vip runs bot management in front of /explore and challenges automated\n"
-            "traffic, which datacenter IPs (GitHub Actions runners) reliably trip. This is\n"
-            "the site's deliberate access control, not a bug to route around -- import\n"
-            "posh.vip events manually, or ask posh.vip for feed access. See scrapers/README.md.",
+            "posh.vip runs bot management in front of /explore and challenges headless\n"
+            "browsers regardless of network -- confirmed blocked from both CI runners and\n"
+            "a residential connection. This is the site's deliberate access control, not a\n"
+            "bug to route around. Re-run with --headed to solve the challenge yourself, or\n"
+            "ask posh.vip for feed access. See scrapers/README.md.",
             file=sys.stderr,
         )
         # A marker the CI summary reads, so a blocked morning is reported as

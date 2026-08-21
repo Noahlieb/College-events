@@ -193,7 +193,7 @@ jobs:
             if [ -f "$SCRAPE_DIR/posh-blocked.txt" ]; then
               echo "🚫 **Posh.vip was blocked by Cloudflare** — $(cat "$SCRAPE_DIR/posh-blocked.txt")"
               echo ""
-              echo "posh.vip runs bot management in front of \`/explore\` and challenges automated traffic; GitHub Actions' datacenter IPs reliably trip it. This is the site's access control, not a bug — nightlife events need a manual import (see \`scrapers/README.md\`) or feed access from posh.vip."
+              echo "posh.vip runs bot management in front of \`/explore\` and challenges headless browsers regardless of network (confirmed from CI and from a residential connection). This is the site's access control, not a bug — nightlife events need a manual \`--headed\` import (see \`scrapers/README.md\`) or feed access from posh.vip."
             elif [ "$posh_count" -eq 0 ]; then
               echo "⚠️ Posh.vip found 0 events without being challenged — the page layout may have changed. Check the \`posh-debug-capture\` artifact for a screenshot/HTML of what the scraper saw."
             fi
