@@ -32,6 +32,11 @@ export interface BackfillSummary {
    * never had the field -- not that every game is at home. */
   sportsEventsInspected: number;
   sportsEventsWithoutIndicator: number;
+  /** A sample of sports events carrying no indicator, with where they came
+   * from. "No indicator anywhere" has two very different causes -- the source
+   * doesn't report it, or the athletics feed isn't reaching these events at
+   * all -- and the source name is what separates them. */
+  sportsSampleWithoutIndicator: { name: string; source: string | null }[];
 }
 
 /**
@@ -59,6 +64,7 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
     awayGamesFlaggedNames: [],
     sportsEventsInspected: 0,
     sportsEventsWithoutIndicator: 0,
+    sportsSampleWithoutIndicator: [],
   };
 
   // 1. Drop schedule slots whose post type no longer has a lane (midweek).
@@ -176,7 +182,13 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
   //    athletics one later, which would leave the only source that knows
   //    where the game is played sitting outside the "original".
   const sportsEvents = await db
-    .select({ id: events.id, name: events.name, flags: events.flags, rawId: events.originalRawContentId })
+    .select({
+      id: events.id,
+      name: events.name,
+      flags: events.flags,
+      rawId: events.originalRawContentId,
+      sourceName: events.sourceName,
+    })
     .from(events)
     .where(and(eq(events.schoolId, schoolId), eq(events.category, "sports"), ne(events.status, "rejected")));
 
@@ -214,6 +226,9 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
       const indicators = (indicatorsByEvent.get(event.id) ?? []).filter((v) => typeof v === "string" && v.trim());
       if (indicators.length === 0) {
         summary.sportsEventsWithoutIndicator++;
+        if (summary.sportsSampleWithoutIndicator.length < 15) {
+          summary.sportsSampleWithoutIndicator.push({ name: event.name, source: event.sourceName });
+        }
         continue;
       }
       if (!indicators.some((v) => isAwayIndicator(v))) continue;
