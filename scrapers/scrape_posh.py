@@ -296,12 +296,28 @@ def fetch_event_detail(slug: str, timeout: int = 20) -> dict | None:
     return None
 
 
+def first_image(value) -> str | None:
+    """schema.org's `image` is allowed to be a bare URL string, an ImageObject,
+    or a list of either. Only the list form was handled before, so a string
+    would silently fall through to the card's lower-quality thumbnail -- or to
+    no image at all, leaving that slide's background empty."""
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, dict):
+        return value.get("url") or value.get("contentUrl") or None
+    if isinstance(value, list):
+        for item in value:
+            found = first_image(item)
+            if found:
+                return found
+    return None
+
+
 def merge_event(card: dict, detail: dict | None, school: str) -> dict:
     detail = detail or {}
     location = detail.get("location") or {}
     address = location.get("address") or {}
-    images = detail.get("image")
-    detail_image = images[0] if isinstance(images, list) and images else None
+    detail_image = first_image(detail.get("image"))
     slug = card.get("slug")
     return {
         "school": school,
@@ -480,6 +496,16 @@ def scrape_one(
         print(f"  dropped {len(dropped)} event(s) outside {expected_state}:", file=sys.stderr)
         for name in dropped:
             print(f"      {name}", file=sys.stderr)
+
+    # The flyer becomes the slide's background, so an event without one renders
+    # as a bare card. Worth stating per run rather than discovering in a preview.
+    if rows:
+        with_images = sum(1 for r in rows if r.get("image_url"))
+        print(f"  {with_images}/{len(rows)} events have a flyer image.", file=sys.stderr)
+        if with_images < len(rows):
+            for r in rows:
+                if not r.get("image_url"):
+                    print(f"      no image: {r.get('name')}", file=sys.stderr)
     return rows
 
 
