@@ -25,6 +25,7 @@ import re
 import ssl
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,10 +42,15 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-# posh.vip renamed .EventCard to .explore-event-card (confirmed 2026-08-21).
-# Both are tried, newest first, so the scraper keeps working across the change
-# and doesn't need a flag day. Kept as one CSS list for wait_for_selector.
-CARD_SELECTORS = [".explore-event-card", ".EventCard"]
+# ORDER MATTERS. These two classes coexist and mean different things:
+#   .EventCard          -- the location-scoped result list. What we want.
+#   .explore-event-card -- a trending/recommended rail that is NOT filtered by
+#                          the location in the URL. A Fort Lauderdale scrape of
+#                          it returned events in Washington DC and Hudson Yards.
+# .EventCard is therefore always preferred, and the rail is a last resort that
+# warns, on the theory that some local events beat none. EXPECTED_STATE below
+# is the backstop that keeps out-of-state events out of the CSV either way.
+CARD_SELECTORS = [".EventCard", ".explore-event-card"]
 CARD_SELECTOR_CSS = ", ".join(CARD_SELECTORS)
 
 # The card's own markup supplies very little that matters: everything the
@@ -55,7 +61,7 @@ CARD_SELECTOR_CSS = ", ".join(CARD_SELECTORS)
 # back null rather than pinning the scraper to class names that keep changing.
 CARD_EXTRACT_JS = r"""
 () => {
-  const SELECTORS = ['.explore-event-card', '.EventCard'];
+  const SELECTORS = ['.EventCard', '.explore-event-card'];
   let cards = [], used = null;
   for (const sel of SELECTORS) {
     const found = Array.from(document.querySelectorAll(sel));
@@ -124,7 +130,7 @@ DIAGNOSE_JS = r"""
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   return {
     title: document.title,
-    eventCardCount: document.querySelectorAll('.explore-event-card, .EventCard').length,
+    eventCardCount: document.querySelectorAll('.EventCard, .explore-event-card').length,
     totalElements: document.querySelectorAll('*').length,
     looksRelevant: entries.filter(([c]) => /event|card|tile|listing|item/i.test(c)).slice(0, 30),
     topClasses: entries.slice(0, 25),
@@ -339,6 +345,44 @@ COLLEGE_EVENTS_FIELDNAMES = ["Date", "Time (ET)", "Event", "Category", "Presente
 # everything into streetAddress instead), so the city is whatever sits right
 # before the "ST ZIP" pair.
 CITY_FROM_ADDRESS = re.compile(r",\s*([^,]+?),\s*[A-Z]{2}\s+\d{5}")
+STATE_FROM_ADDRESS = re.compile(r",\s*([A-Z]{2})\s+\d{5}")
+# "Fort Lauderdale, FL, USA" inside the URL's location= JSON.
+STATE_FROM_LOCATION = re.compile(r",\s*([A-Z]{2}),\s*USA", re.IGNORECASE)
+
+
+def expected_state_for(url: str) -> str | None:
+    """The two-letter state the URL asked for, if it says.
+
+    Used to throw out events posh.vip returns that aren't anywhere near the
+    campus -- a Fort Lauderdale scrape came back with events in Washington DC
+    and Hudson Yards, and those must never reach a post.
+    """
+    try:
+        query = urllib.parse.urlparse(url).query
+        raw = urllib.parse.parse_qs(query).get("location", [""])[0]
+    except Exception:
+        return None
+    m = STATE_FROM_LOCATION.search(raw)
+    return m.group(1).upper() if m else None
+
+
+def drop_out_of_state(rows: list[dict], expected_state: str | None) -> tuple[list[dict], list[str]]:
+    """Splits rows into (kept, names-dropped).
+
+    An event with no parseable address is kept: absent evidence isn't evidence
+    of being in the wrong place, and the detail fetch fails often enough that
+    dropping those would quietly lose real local events.
+    """
+    if not expected_state:
+        return rows, []
+    kept, dropped = [], []
+    for row in rows:
+        m = STATE_FROM_ADDRESS.search(row.get("address") or "")
+        if m and m.group(1).upper() != expected_state:
+            dropped.append(f"{row.get('name')} ({m.group(1).upper()})")
+        else:
+            kept.append(row)
+    return kept, dropped
 
 
 def _fmt_time(iso: str | None) -> str | None:
@@ -414,6 +458,13 @@ def scrape_one(
     elif cards and with_slugs < len(cards):
         print(f"  note: {len(cards) - with_slugs} of {len(cards)} cards had no event link.", file=sys.stderr)
 
+    if matched == ".explore-event-card":
+        print(
+            "  NOTE: the location-scoped list (.EventCard) wasn't present, so this fell back\n"
+            "        to posh.vip's trending rail, which ignores the URL's location.",
+            file=sys.stderr,
+        )
+
     rows = []
     for i, card in enumerate(cards):
         detail = None
@@ -422,6 +473,13 @@ def scrape_one(
             time.sleep(delay)
         rows.append(merge_event(card, detail, school))
         print(f"  [{i + 1}/{len(cards)}] {rows[-1]['name']}", file=sys.stderr)
+
+    expected_state = expected_state_for(url)
+    rows, dropped = drop_out_of_state(rows, expected_state)
+    if dropped:
+        print(f"  dropped {len(dropped)} event(s) outside {expected_state}:", file=sys.stderr)
+        for name in dropped:
+            print(f"      {name}", file=sys.stderr)
     return rows
 
 
