@@ -55,6 +55,58 @@ export function isAwayIndicator(indicator: unknown): boolean {
   return typeof indicator === "string" && ["A", "N"].includes(indicator.trim().toUpperCase());
 }
 
+/** " at Miami" → away. " vs Merrimack" / " vs. FIU" → home. */
+const AT_PATTERN = /\sat\s+\S/i;
+const VS_PATTERN = /\svs\.?\s+\S/i;
+
+/**
+ * Whether a sports event is at home: true, false, or undefined when nothing
+ * says either way.
+ *
+ * Three signals, most trustworthy first:
+ *
+ *   locationIndicator  "H" / "A" / "N" — explicit, but FAU's athletics site
+ *                      leaves it null, so in practice it rarely fires
+ *   atVs               "vs" / "at" — what fausports actually populates
+ *   the event name     "FAU at Mercer" vs "FAU vs North Florida", the same
+ *                      fact rendered into the title
+ *
+ * The name is included because events created before this existed have only
+ * that left: the indicator was null when they were ingested, so re-reading
+ * their raw content proves nothing.
+ *
+ * Anything with no at/vs at all — "FAU Ice Hockey Club Meeting", "Pulse Dance
+ * Troupe Auditions" — returns undefined and stays postable. Club and
+ * intramural listings simply aren't matchups.
+ */
+export function homeAwayForSportsEvent(input: {
+  name?: string | null;
+  atVs?: unknown;
+  locationIndicator?: unknown;
+}): boolean | undefined {
+  const { name, atVs, locationIndicator } = input;
+
+  if (typeof locationIndicator === "string" && locationIndicator.trim()) {
+    if (isAwayIndicator(locationIndicator)) return false;
+    if (locationIndicator.trim().toUpperCase() === "H") return true;
+  }
+
+  if (typeof atVs === "string" && atVs.trim()) {
+    const v = atVs.trim().toLowerCase().replace(/\.$/, "");
+    if (v === "at") return false;
+    if (v === "vs") return true;
+  }
+
+  if (typeof name === "string") {
+    // vs first: "FAU vs Miami at Ocean Bank Convocation Center" is a home
+    // game named after its venue, and checking "at" first would invert it.
+    if (VS_PATTERN.test(name)) return true;
+    if (AT_PATTERN.test(name)) return false;
+  }
+
+  return undefined;
+}
+
 export interface LaneEvent {
   category: EventCategory;
   /** ISO timestamp of the event's start. */

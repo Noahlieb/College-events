@@ -8,6 +8,7 @@ import {
   laneForEvent,
   laneForPostType,
   isAwayIndicator,
+  homeAwayForSportsEvent,
 } from "./lanes.js";
 import { EVENT_CATEGORIES, type EventCategory } from "../types/enums.js";
 
@@ -233,5 +234,64 @@ describe("isAwayIndicator", () => {
     for (const ok of ["H", "h", "", "   ", null, undefined, 0, 123, {}, [], NaN]) {
       expect(isAwayIndicator(ok)).toBe(false);
     }
+  });
+});
+
+describe("homeAwayForSportsEvent", () => {
+  // Verbatim from FAU's live data — fausports leaves location_indicator null
+  // and encodes the fact in at_vs and the title instead.
+  it("reads away from real FAU athletics titles", () => {
+    for (const name of [
+      "Women's Soccer: FAU at Florida State",
+      "Volleyball: FAU at Miami (Exhibition)",
+      "Men's Soccer: FAU at Mercer",
+    ]) {
+      expect(homeAwayForSportsEvent({ name })).toBe(false);
+    }
+  });
+
+  it("reads home from real FAU athletics titles", () => {
+    for (const name of [
+      "Volleyball: FAU vs Merrimack (FAU Invitational)",
+      "Volleyball: FAU vs Stetson (FAU Invitational)",
+      "Volleyball: FAU vs FIU (FAU Invitational)",
+      "Men's Soccer: FAU vs No. 2 NC State",
+      "Men's Soccer: FAU vs North Florida",
+    ]) {
+      expect(homeAwayForSportsEvent({ name })).toBe(true);
+    }
+  });
+
+  it("leaves club and intramural listings unknown", () => {
+    for (const name of [
+      "FAU Dance Practice",
+      "FAU Womens Lacrosse Fall Practices",
+      "Training Fall 2026",
+      "FAU Ice Hockey Club Meeting",
+      "Pulse Dance Troupe Auditions",
+      "Florida Atlantic — Football Games",
+    ]) {
+      expect(homeAwayForSportsEvent({ name })).toBeUndefined();
+    }
+  });
+
+  it("prefers the explicit indicator over the title", () => {
+    expect(homeAwayForSportsEvent({ name: "FAU vs Miami", locationIndicator: "A" })).toBe(false);
+    expect(homeAwayForSportsEvent({ name: "FAU at Miami", locationIndicator: "H" })).toBe(true);
+  });
+
+  it("uses at_vs when the indicator is null, as it is for FAU", () => {
+    expect(homeAwayForSportsEvent({ name: "whatever", atVs: "at", locationIndicator: null })).toBe(false);
+    expect(homeAwayForSportsEvent({ name: "whatever", atVs: "vs.", locationIndicator: null })).toBe(true);
+  });
+
+  it("does not mistake a home game named for its venue", () => {
+    // "vs" is checked before "at" precisely so this stays home.
+    expect(homeAwayForSportsEvent({ name: "Men's Basketball: FAU vs Miami at Baldwin Arena" })).toBe(true);
+  });
+
+  it("returns undefined for empty input", () => {
+    expect(homeAwayForSportsEvent({})).toBeUndefined();
+    expect(homeAwayForSportsEvent({ name: null, atVs: null, locationIndicator: null })).toBeUndefined();
   });
 });
