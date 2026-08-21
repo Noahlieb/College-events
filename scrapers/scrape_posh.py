@@ -3,8 +3,8 @@
 
 Two stages:
   1. Render /explore in a headless browser (event data loads client-side via
-     JS, so a plain HTTP request can't see it) and pull title/date/venue/image
-     off each .EventCard.
+     JS, so a plain HTTP request can't see it) and pull each event's slug
+     off the listing cards.
   2. For each event's slug, plain HTTP GET its /e/<slug> page and extract the
      full schema.org/Event JSON-LD Next.js embeds there (richer description,
      structured venue address, canonical image) -- no browser needed for this
@@ -41,34 +41,69 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
+# posh.vip renamed .EventCard to .explore-event-card (confirmed 2026-08-21).
+# Both are tried, newest first, so the scraper keeps working across the change
+# and doesn't need a flag day. Kept as one CSS list for wait_for_selector.
+CARD_SELECTORS = [".explore-event-card", ".EventCard"]
+CARD_SELECTOR_CSS = ", ".join(CARD_SELECTORS)
+
+# The card's own markup supplies very little that matters: everything the
+# importer needs (name, start/end time, venue, address, description, image)
+# comes from the schema.org JSON-LD on each event's /e/ page. So the one field
+# this extraction really has to get right is the slug -- the rest is a
+# best-effort fallback for when the detail fetch fails, and is allowed to come
+# back null rather than pinning the scraper to class names that keep changing.
 CARD_EXTRACT_JS = r"""
 () => {
+  const SELECTORS = ['.explore-event-card', '.EventCard'];
+  let cards = [], used = null;
+  for (const sel of SELECTORS) {
+    const found = Array.from(document.querySelectorAll(sel));
+    if (found.length) { cards = found; used = sel; break; }
+  }
+
   function findSlug(el) {
+    // Cards are click-handled by React rather than wrapped in <a>, so the URL
+    // lives in component props; walk up until a fiber carries one.
     const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber'));
-    if (!fiberKey) return null;
-    let fiber = el[fiberKey];
-    for (let i = 0; fiber && i < 15; i++, fiber = fiber.return) {
-      const p = fiber.memoizedProps;
-      if (p && typeof p.url === 'string' && p.name) return p.url;
+    if (fiberKey) {
+      let fiber = el[fiberKey];
+      for (let i = 0; fiber && i < 15; i++, fiber = fiber.return) {
+        const p = fiber.memoizedProps;
+        if (p && typeof p.url === 'string' && p.name) return p.url;
+      }
+    }
+    // Fall back to a real href when there is one.
+    const a = el.querySelector('a[href*="/e/"]') || el.closest('a[href*="/e/"]');
+    const m = a && a.getAttribute('href').match(/\/e\/([^/?#]+)/);
+    return m ? m[1] : null;
+  }
+
+  function text(el, ...sels) {
+    for (const s of sels) {
+      const n = el.querySelector(s);
+      if (n && n.textContent.trim()) return n.textContent.trim();
     }
     return null;
   }
-  return Array.from(document.querySelectorAll('.EventCard')).map(card => {
-    const style = card.getAttribute('style') || '';
+
+  function image(el) {
+    const style = el.getAttribute('style') || '';
     const m = style.match(/url\(&quot;(.*?)&quot;\)/) || style.match(/url\("?(.*?)"?\)/);
-    const nameEl = card.querySelector('.EventCard-name');
-    const dateEl = card.querySelector('.EventCard-date');
-    const locEl = card.querySelector('.EventCard-location');
-    const orgImg = card.querySelector('.EventCard-organizer');
-    return {
-      name: nameEl ? nameEl.textContent.trim() : null,
-      date_text: dateEl ? dateEl.textContent.trim() : null,
-      venue: locEl ? locEl.textContent.trim() : null,
-      image_url: m ? m[1] : null,
-      organizer_image_url: orgImg ? orgImg.getAttribute('src') : null,
-      slug: findSlug(card),
-    };
-  });
+    if (m) return m[1];
+    const img = el.querySelector('img');
+    return img ? img.getAttribute('src') : null;
+  }
+
+  return cards.map(card => ({
+    name: text(card, '.EventCard-name', '[class*="event-card-name"]', '[class*="title"]', 'h2', 'h3'),
+    date_text: text(card, '.EventCard-date', '[class*="date"]', 'time'),
+    venue: text(card, '.EventCard-location', '[class*="location"]', '[class*="venue"]'),
+    image_url: image(card),
+    organizer_image_url: (card.querySelector('.EventCard-organizer') || {}).src || null,
+    slug: findSlug(card),
+    matched_selector: used,
+  }));
 }
 """
 
@@ -89,7 +124,7 @@ DIAGNOSE_JS = r"""
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   return {
     title: document.title,
-    eventCardCount: document.querySelectorAll('.EventCard').length,
+    eventCardCount: document.querySelectorAll('.explore-event-card, .EventCard').length,
     totalElements: document.querySelectorAll('*').length,
     looksRelevant: entries.filter(([c]) => /event|card|tile|listing|item/i.test(c)).slice(0, 30),
     topClasses: entries.slice(0, 25),
@@ -167,7 +202,7 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
                     file=sys.stderr,
                 )
             try:
-                page.wait_for_selector(".EventCard", timeout=timeout)
+                page.wait_for_selector(CARD_SELECTOR_CSS, timeout=timeout)
             except Exception:
                 pass
 
@@ -362,7 +397,22 @@ def scrape_one(
 ) -> list[dict]:
     print(f"Loading {school}: {url} ...", file=sys.stderr)
     cards = scrape_explore(url, headless=headless, debug_dir=debug_dir, debug_label=f"{school}_{url}")
-    print(f"  found {len(cards)} event cards.", file=sys.stderr)
+    matched = cards[0].get("matched_selector") if cards else None
+    print(f"  found {len(cards)} event cards{f' via {matched}' if matched else ''}.", file=sys.stderr)
+
+    # Everything the importer needs comes from each event's /e/ page, so a card
+    # without a slug is a dead end. Cards-but-no-slugs means the props layout
+    # moved -- worth saying out loud, since the run would otherwise just look
+    # like a thin night.
+    with_slugs = sum(1 for c in cards if c.get("slug"))
+    if cards and with_slugs == 0:
+        print(
+            "  WARNING: no event links could be read from any card — posh.vip's card "
+            "internals changed. Re-run with --diagnose.",
+            file=sys.stderr,
+        )
+    elif cards and with_slugs < len(cards):
+        print(f"  note: {len(cards) - with_slugs} of {len(cards)} cards had no event link.", file=sys.stderr)
 
     rows = []
     for i, card in enumerate(cards):
@@ -404,7 +454,7 @@ def run_diagnostics(url: str, headless: bool, debug_dir: Path | None) -> None:
 
     print(f"\n  page title      : {info['title']!r}")
     print(f"  elements in DOM : {info['totalElements']}")
-    print(f"  .EventCard count: {info['eventCardCount']}   <-- what this scraper looks for")
+    print(f"  card count      : {info['eventCardCount']}   <-- matching {CARD_SELECTOR_CSS}")
     print(f"  /e/ event links : {len(info['linkSample'])}")
     if info["linkSample"]:
         for href in info["linkSample"][:5]:
@@ -417,11 +467,11 @@ def run_diagnostics(url: str, headless: bool, debug_dir: Path | None) -> None:
         print(f"      {c}  x{n}")
 
     if info["eventCardCount"] > 0:
-        print("\n=> .EventCard still exists. The selector is fine; the problem is elsewhere.")
+        print("\n=> The card selector matches. It's fine; the problem is elsewhere.")
     elif "just a moment" in (info["title"] or "").lower():
         print("\n=> Cloudflare challenge page — the listings never loaded.")
     else:
-        print("\n=> The page loaded but has no .EventCard. posh.vip most likely renamed its")
+        print("\n=> The page loaded but no card matched. posh.vip most likely renamed its")
         print("   markup; the classes listed above are the candidates to switch to.")
 
 
