@@ -73,6 +73,32 @@ CARD_EXTRACT_JS = r"""
 """
 
 
+class BrowserClosed(RuntimeError):
+    """The browser window went away mid-scrape -- almost always a human closing
+    it. Worth its own error so the run ends with one clear line instead of a
+    Playwright traceback."""
+
+
+DIAGNOSE_JS = r"""
+() => {
+  const counts = {};
+  for (const el of document.querySelectorAll('*')) {
+    const cls = typeof el.className === 'string' ? el.className : '';
+    for (const c of cls.split(/\s+/)) if (c) counts[c] = (counts[c] || 0) + 1;
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  return {
+    title: document.title,
+    eventCardCount: document.querySelectorAll('.EventCard').length,
+    totalElements: document.querySelectorAll('*').length,
+    looksRelevant: entries.filter(([c]) => /event|card|tile|listing|item/i.test(c)).slice(0, 30),
+    topClasses: entries.slice(0, 25),
+    linkSample: Array.from(document.querySelectorAll('a[href*="/e/"]')).slice(0, 8).map(a => a.getAttribute('href')),
+  };
+}
+"""
+
+
 class CloudflareChallenge(RuntimeError):
     """posh.vip served Cloudflare's bot-management challenge instead of the
     listings. Raised so callers can report *why* a location produced nothing,
@@ -145,9 +171,31 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
             except Exception:
                 pass
 
-            cards = page.evaluate(CARD_EXTRACT_JS)
+            try:
+                cards = page.evaluate(CARD_EXTRACT_JS)
+            except Exception as e:
+                if page.is_closed() or "has been closed" in str(e):
+                    raise BrowserClosed(
+                        "the browser window was closed before the scrape finished"
+                    ) from None
+                raise
+
             if not cards:
                 _capture_debug(page, debug_dir, debug_label)
+                # The listings never matched .EventCard. Say what IS on the page
+                # so a renamed class shows up here instead of needing a manual
+                # dig through the captured HTML.
+                try:
+                    info = page.evaluate(DIAGNOSE_JS)
+                    print(
+                        f"  page had {info['totalElements']} elements; classes that look like listings: "
+                        f"{[c for c, _ in info['looksRelevant'][:12]] or 'none'}",
+                        file=sys.stderr,
+                    )
+                    if info["linkSample"]:
+                        print(f"  found {len(info['linkSample'])} /e/ event links: {info['linkSample'][:3]}", file=sys.stderr)
+                except Exception:
+                    pass
                 # Only now ask *why* there's no content, so a page that loaded
                 # fine is never called blocked.
                 if _looks_like_challenge(page):
@@ -327,6 +375,56 @@ def scrape_one(
     return rows
 
 
+DIAGNOSE_SETTLE_SECONDS = 15
+
+
+def run_diagnostics(url: str, headless: bool, debug_dir: Path | None) -> None:
+    """Loads one location and reports what's actually in the DOM.
+
+    Exists because 'no events found' has several very different causes -- a
+    challenge, a renamed class, an genuinely empty week -- and guessing between
+    them from an empty CSV wastes a lot of time.
+    """
+    print(f"Loading {url}\n  (waiting {DIAGNOSE_SETTLE_SECONDS}s for the page to settle)", file=sys.stderr)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        page = browser.new_page(user_agent=USER_AGENT)
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(DIAGNOSE_SETTLE_SECONDS * 1000)
+            info = page.evaluate(DIAGNOSE_JS)
+            _capture_debug(page, debug_dir, "diagnose")
+        except Exception as e:
+            if page.is_closed() or "has been closed" in str(e):
+                print("The browser window was closed before the check finished.", file=sys.stderr)
+                sys.exit(3)
+            raise
+        finally:
+            browser.close()
+
+    print(f"\n  page title      : {info['title']!r}")
+    print(f"  elements in DOM : {info['totalElements']}")
+    print(f"  .EventCard count: {info['eventCardCount']}   <-- what this scraper looks for")
+    print(f"  /e/ event links : {len(info['linkSample'])}")
+    if info["linkSample"]:
+        for href in info["linkSample"][:5]:
+            print(f"      {href}")
+    print("\n  classes that look like listings (name, count):")
+    for c, n in info["looksRelevant"][:15] or [("(none found)", 0)]:
+        print(f"      {c}  x{n}")
+    print("\n  most common classes overall:")
+    for c, n in info["topClasses"][:12]:
+        print(f"      {c}  x{n}")
+
+    if info["eventCardCount"] > 0:
+        print("\n=> .EventCard still exists. The selector is fine; the problem is elsewhere.")
+    elif "just a moment" in (info["title"] or "").lower():
+        print("\n=> Cloudflare challenge page — the listings never loaded.")
+    else:
+        print("\n=> The page loaded but has no .EventCard. posh.vip most likely renamed its")
+        print("   markup; the classes listed above are the candidates to switch to.")
+
+
 def load_schools(config_path: Path) -> list[dict]:
     """Loads schools.json, normalising each entry to a `urls` list.
 
@@ -369,9 +467,26 @@ def main() -> None:
     parser.add_argument("--headed", action="store_true", help="show the browser window (debugging)")
     parser.add_argument("--no-detail", action="store_true", help="skip per-event detail fetch (faster, less text)")
     parser.add_argument("--delay", type=float, default=0.5, help="seconds between per-event detail requests")
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="load the first location, report what markup the page actually has, and exit "
+        "(for checking whether posh.vip renamed the classes this scraper looks for)",
+    )
     args = parser.parse_args()
     headless = not args.headed
     debug_dir = Path(args.out_dir) / "debug"
+
+    if args.diagnose:
+        url = args.url
+        if not url:
+            config_path = Path(args.config)
+            if not config_path.exists():
+                print(f"No config at {config_path} and no --url given.", file=sys.stderr)
+                sys.exit(1)
+            url = load_schools(config_path)[0]["urls"][0]
+        run_diagnostics(url, headless, debug_dir)
+        return
 
     if args.url:
         try:
@@ -384,6 +499,9 @@ def main() -> None:
                 "browser window that opens.",
                 file=sys.stderr,
             )
+            sys.exit(3)
+        except BrowserClosed as e:
+            print(f"Stopped: {e}.", file=sys.stderr)
             sys.exit(3)
         out_path = Path(args.out) if args.out else Path(args.out_dir) / "posh_events.csv"
         out_path.parent.mkdir(parents=True, exist_ok=True)
