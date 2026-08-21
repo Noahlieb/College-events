@@ -53,11 +53,17 @@ USER_AGENT = (
 CARD_SELECTOR = ".EventCard"
 RAIL_SELECTOR = ".explore-event-card"
 
-# The listing grid sits below a hero carousel and renders as it scrolls into
-# view, so simply waiting on the page does not summon it -- the run that
-# triggered this scrolls the page instead.
-SCROLL_STEPS = 12
+# Scrolling is kept because a grid mounted on view would need it, but it is
+# deliberately short: on posh.vip itself scrolling has never once produced a
+# grid that wasn't already there, so the retry below is what actually recovers
+# a bad load, and every scroll step is time added to that retry.
+SCROLL_STEPS = 5
 SCROLL_PAUSE_MS = 800
+
+# The grid renders during page load or not at all, and which one you get varies
+# between otherwise identical runs -- so a miss is retried as a bad load.
+LOAD_ATTEMPTS = 3
+RETRY_PAUSE_MS = 2000
 
 # The card's own markup supplies very little that matters: everything the
 # importer needs (name, start/end time, venue, address, description, image)
@@ -233,73 +239,90 @@ def _scroll_for_listings(page) -> None:
         pass
 
 
+def _load_once(page, url: str, headless: bool, announce: bool):
+    """One navigation + wait + scroll. Returns (response, cards)."""
+    response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+    # Success is the listings showing up -- nothing else. Waiting on the
+    # content directly means a challenge that clears (on its own, or because a
+    # human solved it in a headed run) just continues into a normal scrape,
+    # with no separate "are we challenged?" state to get wrong.
+    timeout = CONTENT_TIMEOUT_MS if headless else HEADED_CONTENT_TIMEOUT_MS
+    if announce and not headless:
+        print(
+            f"  Waiting up to {timeout // 1000}s for listings — if a challenge appears, solve it in the browser.",
+            file=sys.stderr,
+        )
+    try:
+        page.wait_for_selector(f"{CARD_SELECTOR}, {RAIL_SELECTOR}", timeout=timeout)
+    except Exception:
+        pass
+
+    if page.query_selector(CARD_SELECTOR) is None:
+        _scroll_for_listings(page)
+
+    try:
+        return response, page.evaluate(CARD_EXTRACT_JS)
+    except Exception as e:
+        if page.is_closed() or "has been closed" in str(e):
+            raise BrowserClosed("the browser window was closed before the scrape finished") from None
+        raise
+
+
 def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = None, debug_label: str = "explore") -> list[dict]:
+    """Scrapes one /explore location, retrying the whole page load.
+
+    The grid either renders during load or not at all -- when it is missing,
+    scrolling never produces it, and when it is present no scrolling is needed.
+    Which one you get varies per load: consecutive runs had Boca succeed while
+    Fort Lauderdale failed, then the reverse, on unchanged code. So a miss is
+    treated as a bad load and retried from scratch rather than reasoned about.
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         page = browser.new_page(user_agent=USER_AGENT)
         try:
-            response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            response = None
+            for attempt in range(1, LOAD_ATTEMPTS + 1):
+                response, cards = _load_once(page, url, headless, announce=attempt == 1)
+                if cards:
+                    if attempt > 1:
+                        print(f"  listings rendered on attempt {attempt}.", file=sys.stderr)
+                    return cards
+                if attempt < LOAD_ATTEMPTS:
+                    print(f"  no listings on attempt {attempt}/{LOAD_ATTEMPTS} — reloading.", file=sys.stderr)
+                    page.wait_for_timeout(RETRY_PAUSE_MS)
 
-            # Success is the listings showing up -- nothing else. Waiting on the
-            # content directly means a challenge that clears (on its own, or
-            # because a human solved it in a headed run) just continues into a
-            # normal scrape, with no separate "are we challenged?" state to get
-            # wrong.
-            timeout = CONTENT_TIMEOUT_MS if headless else HEADED_CONTENT_TIMEOUT_MS
-            if not headless:
+            _capture_debug(page, debug_dir, debug_label)
+            # Report what IS on the page, so a renamed class shows up here
+            # rather than needing a dig through the captured HTML.
+            try:
+                info = page.evaluate(DIAGNOSE_JS)
                 print(
-                    f"  Waiting up to {timeout // 1000}s for listings — if a challenge appears, solve it in the browser.",
+                    f"  page had {info['totalElements']} elements; classes that look like listings: "
+                    f"{[c for c, _ in info['looksRelevant'][:12]] or 'none'}",
                     file=sys.stderr,
                 )
-            try:
-                page.wait_for_selector(f"{CARD_SELECTOR}, {RAIL_SELECTOR}", timeout=timeout)
-            except Exception:
-                pass
-
-            # Anything on the page means the challenge (if any) is behind us, so
-            # now go looking for the grid itself. It renders on scroll, and no
-            # amount of waiting substitutes for that.
-            if page.query_selector(CARD_SELECTOR) is None:
-                _scroll_for_listings(page)
-
-            try:
-                cards = page.evaluate(CARD_EXTRACT_JS)
-            except Exception as e:
-                if page.is_closed() or "has been closed" in str(e):
-                    raise BrowserClosed(
-                        "the browser window was closed before the scrape finished"
-                    ) from None
-                raise
-
-            if not cards:
-                _capture_debug(page, debug_dir, debug_label)
-                # The listings never matched .EventCard. Say what IS on the page
-                # so a renamed class shows up here instead of needing a manual
-                # dig through the captured HTML.
-                try:
-                    info = page.evaluate(DIAGNOSE_JS)
+                if info.get("railCount"):
                     print(
-                        f"  page had {info['totalElements']} elements; classes that look like listings: "
-                        f"{[c for c, _ in info['looksRelevant'][:12]] or 'none'}",
+                        f"  NOTE: {info['railCount']} trending-rail cards are present but deliberately\n"
+                        f"        not scraped — that rail ignores the URL's location.",
                         file=sys.stderr,
                     )
-                    if info.get("railCount"):
-                        print(
-                            f"  NOTE: {info['railCount']} trending-rail cards are present but deliberately\n"
-                            f"        not scraped — that rail ignores the URL's location.",
-                            file=sys.stderr,
-                        )
-                except Exception:
-                    pass
-                # Only now ask *why* there's no content, so a page that loaded
-                # fine is never called blocked.
-                if _looks_like_challenge(page):
-                    raise CloudflareChallenge(
-                        "posh.vip served a Cloudflare bot-management challenge instead of the listings"
-                    )
-                status = response.status if response else "?"
-                print(f"  0 cards found (HTTP {status}, page title: {page.title()!r})", file=sys.stderr)
-            return cards
+            except Exception:
+                pass
+            # Only now ask *why* there's no content, so a page that loaded fine
+            # is never called blocked.
+            if _looks_like_challenge(page):
+                raise CloudflareChallenge(
+                    "posh.vip served a Cloudflare bot-management challenge instead of the listings"
+                )
+            status = response.status if response else "?"
+            print(
+                f"  0 cards found after {LOAD_ATTEMPTS} attempts (HTTP {status}, page title: {page.title()!r})",
+                file=sys.stderr,
+            )
+            return []
         finally:
             browser.close()
 
