@@ -16,10 +16,23 @@ being awake.
 
 ## posh.vip: two separate problems, one fixed
 
-**1. Stale selector (fixed 2026-08-21).** posh.vip renamed its listing class
-from `.EventCard` to `.explore-event-card`. The scraper searched for a class
-that no longer existed, found nothing, and reported it as an empty result.
-Both classes are now tried, newest first.
+**1. Two card classes that mean different things (handled 2026-08-21).**
+posh.vip's page carries both `.EventCard` and `.explore-event-card`, and they
+are not interchangeable:
+
+| Class | What it is |
+|---|---|
+| `.EventCard` | the result list scoped to the URL's location — **what we want** |
+| `.explore-event-card` | a trending/recommended rail that ignores the location |
+
+Scraping the rail for Fort Lauderdale returned events in Washington DC and at
+Hudson Yards in New York. `.EventCard` is therefore always preferred; the rail
+is a last-resort fallback that prints a warning.
+
+As a backstop, every scrape drops events whose address is outside the state the
+URL asked for (`Fort Lauderdale, FL, USA` → `FL`), listing what it dropped.
+Events with no parseable address are kept — the detail fetch fails often enough
+that dropping those would lose real local events.
 
 Because the class names moved once, extraction no longer leans on them: the
 card only has to yield the event's **slug**, and everything the importer needs
