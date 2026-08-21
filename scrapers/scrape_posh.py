@@ -56,8 +56,8 @@ RAIL_SELECTOR = ".explore-event-card"
 # The listing grid sits below a hero carousel and renders as it scrolls into
 # view, so simply waiting on the page does not summon it -- the run that
 # triggered this scrolls the page instead.
-SCROLL_STEPS = 6
-SCROLL_PAUSE_MS = 700
+SCROLL_STEPS = 12
+SCROLL_PAUSE_MS = 800
 
 # The card's own markup supplies very little that matters: everything the
 # importer needs (name, start/end time, venue, address, description, image)
@@ -196,18 +196,41 @@ def _scroll_for_listings(page) -> None:
     """Scrolls until the location-scoped grid renders.
 
     posh.vip puts a hero carousel and a trending rail above the actual results,
-    and the results mount as they scroll into view. A run that only waited got
-    the rail and never saw the grid at all.
+    and the results mount as they scroll into view.
+
+    Three mechanisms, because window.scrollBy alone left one location's grid
+    unmounted through six attempts: a real wheel event (the only one of the
+    three that reaches a scrollable inner container rather than the document),
+    End (some grids page on keyboard), and the window scroll itself.
     """
+    try:
+        view = page.viewport_size or {"width": 1280, "height": 720}
+        page.mouse.move(view["width"] // 2, view["height"] // 2)
+    except Exception:
+        pass
+
     for step in range(SCROLL_STEPS):
-        page.evaluate("() => window.scrollBy(0, window.innerHeight)")
+        for nudge in (
+            lambda: page.mouse.wheel(0, 1200),
+            lambda: page.keyboard.press("End"),
+            lambda: page.evaluate("() => window.scrollBy(0, window.innerHeight)"),
+        ):
+            try:
+                nudge()
+            except Exception:
+                pass
         page.wait_for_timeout(SCROLL_PAUSE_MS)
         if page.query_selector(CARD_SELECTOR):
             print(f"  listings appeared after {step + 1} scroll(s).", file=sys.stderr)
             # Give the rest of the grid a moment to fill in behind the first row.
             page.wait_for_timeout(SCROLL_PAUSE_MS * 2)
             return
-    page.evaluate("() => window.scrollTo(0, 0)")
+
+    print(f"  grid still not mounted after {SCROLL_STEPS} scroll attempts.", file=sys.stderr)
+    try:
+        page.evaluate("() => window.scrollTo(0, 0)")
+    except Exception:
+        pass
 
 
 def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = None, debug_label: str = "explore") -> list[dict]:
