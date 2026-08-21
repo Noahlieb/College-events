@@ -42,16 +42,22 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-# ORDER MATTERS. These two classes coexist and mean different things:
-#   .EventCard          -- the location-scoped result list. What we want.
-#   .explore-event-card -- a trending/recommended rail that is NOT filtered by
-#                          the location in the URL. A Fort Lauderdale scrape of
-#                          it returned events in Washington DC and Hudson Yards.
-# .EventCard is therefore always preferred, and the rail is a last resort that
-# warns, on the theory that some local events beat none. EXPECTED_STATE below
-# is the backstop that keeps out-of-state events out of the CSV either way.
-CARD_SELECTORS = [".EventCard", ".explore-event-card"]
-CARD_SELECTOR_CSS = ", ".join(CARD_SELECTORS)
+# Only .EventCard is ever scraped -- the location-scoped result list.
+#
+# The page also carries .explore-event-card, a trending rail that ignores the
+# URL's location. It was briefly used as a fallback, on the theory that some
+# events beat none. That was wrong: a run of it returned 26 out-of-state events
+# out of 40 (DC, NY, TX, CA, NC, PA, SC, MD), rendered each one twice, and
+# displaced the real list. Wrong-city nightlife in an FAU post is a silent
+# error that looks like a successful run, so no rail data is ever used.
+CARD_SELECTOR = ".EventCard"
+RAIL_SELECTOR = ".explore-event-card"
+
+# The listing grid sits below a hero carousel and renders as it scrolls into
+# view, so simply waiting on the page does not summon it -- the run that
+# triggered this scrolls the page instead.
+SCROLL_STEPS = 6
+SCROLL_PAUSE_MS = 700
 
 # The card's own markup supplies very little that matters: everything the
 # importer needs (name, start/end time, venue, address, description, image)
@@ -61,12 +67,8 @@ CARD_SELECTOR_CSS = ", ".join(CARD_SELECTORS)
 # back null rather than pinning the scraper to class names that keep changing.
 CARD_EXTRACT_JS = r"""
 () => {
-  const SELECTORS = ['.EventCard', '.explore-event-card'];
-  let cards = [], used = null;
-  for (const sel of SELECTORS) {
-    const found = Array.from(document.querySelectorAll(sel));
-    if (found.length) { cards = found; used = sel; break; }
-  }
+  const cards = Array.from(document.querySelectorAll('.EventCard'));
+  const used = cards.length ? '.EventCard' : null;
 
   function findSlug(el) {
     // Cards are click-handled by React rather than wrapped in <a>, so the URL
@@ -130,7 +132,8 @@ DIAGNOSE_JS = r"""
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   return {
     title: document.title,
-    eventCardCount: document.querySelectorAll('.EventCard, .explore-event-card').length,
+    eventCardCount: document.querySelectorAll('.EventCard').length,
+    railCount: document.querySelectorAll('.explore-event-card').length,
     totalElements: document.querySelectorAll('*').length,
     looksRelevant: entries.filter(([c]) => /event|card|tile|listing|item/i.test(c)).slice(0, 30),
     topClasses: entries.slice(0, 25),
@@ -151,11 +154,6 @@ class CloudflareChallenge(RuntimeError):
 # original timeout, since nobody is there to intervene.
 CONTENT_TIMEOUT_MS = 30000
 HEADED_CONTENT_TIMEOUT_MS = 180000
-
-# Extra time granted to the location-scoped list once the trending rail has
-# already rendered. Only ever spent when the two disagree, so the common case
-# pays nothing for it.
-SCOPED_LIST_GRACE_MS = 20000
 
 
 def _looks_like_challenge(page) -> bool:
@@ -194,6 +192,24 @@ def _capture_debug(page, debug_dir: Path | None, label: str) -> None:
         print(f"  debug capture failed: {e}", file=sys.stderr)
 
 
+def _scroll_for_listings(page) -> None:
+    """Scrolls until the location-scoped grid renders.
+
+    posh.vip puts a hero carousel and a trending rail above the actual results,
+    and the results mount as they scroll into view. A run that only waited got
+    the rail and never saw the grid at all.
+    """
+    for step in range(SCROLL_STEPS):
+        page.evaluate("() => window.scrollBy(0, window.innerHeight)")
+        page.wait_for_timeout(SCROLL_PAUSE_MS)
+        if page.query_selector(CARD_SELECTOR):
+            print(f"  listings appeared after {step + 1} scroll(s).", file=sys.stderr)
+            # Give the rest of the grid a moment to fill in behind the first row.
+            page.wait_for_timeout(SCROLL_PAUSE_MS * 2)
+            return
+    page.evaluate("() => window.scrollTo(0, 0)")
+
+
 def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = None, debug_label: str = "explore") -> list[dict]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -213,20 +229,15 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
                     file=sys.stderr,
                 )
             try:
-                page.wait_for_selector(CARD_SELECTOR_CSS, timeout=timeout)
+                page.wait_for_selector(f"{CARD_SELECTOR}, {RAIL_SELECTOR}", timeout=timeout)
             except Exception:
                 pass
 
-            # Whichever list rendered first won that wait, and the trending rail
-            # is consistently faster than the location-scoped one -- which is how
-            # a Boca scrape came back holding a rail full of out-of-state events
-            # while .EventCard was still on its way. Having seen the rail, give
-            # the scoped list its own moment before settling for second best.
-            try:
-                if page.query_selector(".EventCard") is None and page.query_selector(".explore-event-card"):
-                    page.wait_for_selector(".EventCard", timeout=SCOPED_LIST_GRACE_MS)
-            except Exception:
-                pass
+            # Anything on the page means the challenge (if any) is behind us, so
+            # now go looking for the grid itself. It renders on scroll, and no
+            # amount of waiting substitutes for that.
+            if page.query_selector(CARD_SELECTOR) is None:
+                _scroll_for_listings(page)
 
             try:
                 cards = page.evaluate(CARD_EXTRACT_JS)
@@ -249,8 +260,12 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
                         f"{[c for c, _ in info['looksRelevant'][:12]] or 'none'}",
                         file=sys.stderr,
                     )
-                    if info["linkSample"]:
-                        print(f"  found {len(info['linkSample'])} /e/ event links: {info['linkSample'][:3]}", file=sys.stderr)
+                    if info.get("railCount"):
+                        print(
+                            f"  NOTE: {info['railCount']} trending-rail cards are present but deliberately\n"
+                            f"        not scraped — that rail ignores the URL's location.",
+                            file=sys.stderr,
+                        )
                 except Exception:
                     pass
                 # Only now ask *why* there's no content, so a page that loaded
@@ -489,13 +504,6 @@ def scrape_one(
         )
     elif cards and with_slugs < len(cards):
         print(f"  note: {len(cards) - with_slugs} of {len(cards)} cards had no event link.", file=sys.stderr)
-
-    if matched == ".explore-event-card":
-        print(
-            "  NOTE: the location-scoped list (.EventCard) wasn't present, so this fell back\n"
-            "        to posh.vip's trending rail, which ignores the URL's location.",
-            file=sys.stderr,
-        )
 
     rows = []
     for i, card in enumerate(cards):

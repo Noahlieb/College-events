@@ -16,23 +16,29 @@ being awake.
 
 ## posh.vip: two separate problems, one fixed
 
-**1. Two card classes that mean different things (handled 2026-08-21).**
-posh.vip's page carries both `.EventCard` and `.explore-event-card`, and they
-are not interchangeable:
+**1. Two card lists that mean different things (handled 2026-08-21).**
 
 | Class | What it is |
 |---|---|
-| `.EventCard` | the result list scoped to the URL's location — **what we want** |
-| `.explore-event-card` | a trending/recommended rail that ignores the location |
+| `.EventCard` | the result grid scoped to the URL's location — **the only thing scraped** |
+| `.explore-event-card` | a trending rail that ignores the location — **never scraped** |
 
-Scraping the rail for Fort Lauderdale returned events in Washington DC and at
-Hudson Yards in New York. `.EventCard` is therefore always preferred; the rail
-is a last-resort fallback that prints a warning.
+Scraping the rail for FAU returned 26 out-of-state events out of 40 (DC, NY,
+TX, CA, NC, PA, SC, MD), each rendered twice. It was briefly used as a fallback
+on the theory that some events beat none; that was wrong. Wrong-city nightlife
+in an FAU post is a silent error that looks like a successful run, so the rail
+is never used — a location that yields no `.EventCard` yields nothing.
 
-As a backstop, every scrape drops events whose address is outside the state the
-URL asked for (`Fort Lauderdale, FL, USA` → `FL`), listing what it dropped.
-Events with no parseable address are kept — the detail fetch fails often enough
-that dropping those would lose real local events.
+**The grid renders on scroll.** It sits below a hero carousel and the rail, and
+mounts as it comes into view, so waiting alone never summons it — the scraper
+scrolls until it appears. If you see `0 cards found` alongside a note about
+trending-rail cards, the grid never mounted; re-run, and use `--diagnose` if it
+persists.
+
+As a backstop, every scrape also drops events whose address is outside the
+state the URL asked for (`Fort Lauderdale, FL, USA` → `FL`), listing what it
+dropped. Events with no parseable address are kept — the detail fetch fails
+often enough that dropping those would lose real local events.
 
 Because the class names moved once, extraction no longer leans on them: the
 card only has to yield the event's **slug**, and everything the importer needs
