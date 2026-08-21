@@ -10,6 +10,9 @@ export interface SelectableEvent {
   bucketScores: BucketScores;
   verificationStatus: VerificationStatus;
   startAt: string;
+  /** Sports only: false keeps an away/neutral-site game out of every post.
+   * Spread into the lane check below, so see LaneEvent for the semantics. */
+  isHomeGame?: boolean | null;
 }
 
 export interface SelectionOptions {

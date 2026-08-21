@@ -1,6 +1,8 @@
-import { and, eq, ne } from "drizzle-orm";
-import { db, events, eventSources, posts, schools, sources } from "@college-events/db";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { db, events, eventSources, posts, rawContent, schools, sources } from "@college-events/db";
 import {
+  AWAY_GAME_FLAG,
+  isAwayIndicator,
   EVENT_CATEGORIES,
   POST_LANES,
   daysUntil,
@@ -21,6 +23,9 @@ export interface BackfillSummary {
   /** Existing posts whose post type no longer maps to a lane. Left in
    * place (they are real history) but never rebuilt again. */
   postsOrphaned: number;
+  /** Sports events found to be away/neutral-site and newly flagged, so they
+   * stop appearing in posts. */
+  awayGamesFlagged: number;
 }
 
 /**
@@ -44,6 +49,7 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
     eventsRecategorized: 0,
     eventsRescored: 0,
     postsOrphaned: 0,
+    awayGamesFlagged: 0,
   };
 
   // 1. Drop schedule slots whose post type no longer has a lane (midweek).
@@ -150,7 +156,37 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
     }
   }
 
-  // 4. Report posts whose type no longer has a lane. They are left in place
+  // 4. Flag sports events that are away/neutral-site games. Events created
+  //    before home/away routing existed carry no flag, so they would keep
+  //    appearing in posts until something re-created them -- and nothing
+  //    ever does, since process.ts only touches new raw content. The
+  //    indicator is read back off the raw content each event came from.
+  const sportsEvents = await db
+    .select({ id: events.id, name: events.name, flags: events.flags, rawId: events.originalRawContentId })
+    .from(events)
+    .where(and(eq(events.schoolId, schoolId), eq(events.category, "sports"), ne(events.status, "rejected")));
+
+  const unflagged = sportsEvents.filter((e) => !e.flags.includes(AWAY_GAME_FLAG));
+  if (unflagged.length > 0) {
+    const raws = await db
+      .select({ id: rawContent.id, rawMetadata: rawContent.rawMetadata })
+      .from(rawContent)
+      .where(inArray(rawContent.id, unflagged.map((e) => e.rawId)));
+    const indicatorById = new Map(raws.map((r) => [r.id, r.rawMetadata?.locationIndicator]));
+
+    for (const event of unflagged) {
+      if (!isAwayIndicator(indicatorById.get(event.rawId))) continue;
+      summary.awayGamesFlagged++;
+      if (!dryRun) {
+        await db
+          .update(events)
+          .set({ flags: [...event.flags, AWAY_GAME_FLAG], updatedAt: new Date() })
+          .where(eq(events.id, event.id));
+      }
+    }
+  }
+
+  // 5. Report posts whose type no longer has a lane. They are left in place
   //    rather than deleted — they are real published/approved history — but
   //    select-posts will never rebuild them again, so an operator needs to
   //    know they are now frozen rather than quietly stale.
@@ -167,7 +203,8 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
       "backfill_lanes",
       `Lane backfill: schedule ${summary.scheduleSlotsBefore}→${summary.scheduleSlotsAfter} slots, ` +
         `${summary.sourcesPinned.length} source(s) pinned, ${summary.eventsRecategorized} event(s) recategorized, ` +
-        `${summary.eventsRescored} rescored, ${summary.postsOrphaned} post(s) left orphaned by retired post types.`,
+        `${summary.eventsRescored} rescored, ${summary.awayGamesFlagged} away game(s) flagged, ` +
+        `${summary.postsOrphaned} post(s) left orphaned by retired post types.`,
     );
   }
 
