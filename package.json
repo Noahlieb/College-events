@@ -15,9 +15,9 @@
     "db:seed": "pnpm --filter @college-events/db seed",
     "db:reset": "pnpm --filter @college-events/db reset",
     "db:studio": "pnpm --filter @college-events/db studio",
-    "worker": "pnpm --filter @college-events/worker start",
+    "worker": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker start",
     "dashboard": "pnpm --filter @college-events/dashboard dev",
-    "demo": "pnpm --filter @college-events/worker demo",
+    "demo": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker demo",
     "deploy:render-service": "pnpm --filter @college-events/worker... build && rm -rf .vercel && cp -r apps/render-service/.vercel .vercel && vercel --prod --yes",
     "deploy:dashboard": "pnpm --filter @college-events/dashboard... build && rm -rf .vercel && cp -r apps/dashboard/.vercel .vercel && vercel --prod --yes"
   },
