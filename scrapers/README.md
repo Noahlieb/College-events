@@ -14,12 +14,16 @@ being awake.
 | `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | Yes |
 | `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
 
-## posh.vip is blocked from CI
+## posh.vip challenges headless browsers
 
-posh.vip runs Cloudflare bot management in front of `/explore`. Requests from
-GitHub Actions runners are served a managed challenge ("Performing security
-verification") instead of the listings, every time — datacenter IP ranges
-reliably trip it. Confirmed on 2026-08-21 for both FAU locations.
+posh.vip runs Cloudflare bot management in front of `/explore` and serves a
+managed challenge ("Performing security verification") instead of the listings.
+
+Confirmed 2026-08-21, both FAU locations, **from GitHub Actions runners _and_
+from a residential connection** — so this is not about datacenter IP ranges.
+Playwright's headless Chromium is what gets flagged, wherever it runs. This
+scraper used to work unattended; posh.vip appears to have tightened its bot
+management since.
 
 **This is the site's deliberate access control, so the scraper does not try to
 defeat it** — no CAPTCHA-solving services, no fingerprint spoofing, no
@@ -36,10 +40,10 @@ reporting zero events.
 Getting nightlife events in, in order of preference:
 
 1. **Ask posh.vip for feed/API access.** The durable fix if they agree.
-2. **Import manually.** Run the scraper on your own machine with `--headed`.
-   A real browser window opens; if a challenge appears, solve it yourself and
-   the scrape continues (it waits up to 3 minutes for you). A residential IP
-   is also far less likely to be challenged than a CI runner to begin with:
+2. **Import manually with `--headed`.** A real browser window opens; when the
+   challenge appears, solve it yourself and the scrape continues (it waits up
+   to 3 minutes for you). This is the only route that still reaches the
+   listings, since headless runs are challenged everywhere:
 
    ```bash
    python scrapers/scrape_posh.py --headed --out-dir /tmp/scrape
