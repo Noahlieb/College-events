@@ -103,6 +103,21 @@ jobs:
       # ── 2. Import what the scrapers produced ─────────────────────────
       # Guarded on the file existing so a failed scrape above doesn't turn
       # into a confusing "file not found" here.
+      # A 0-card scrape still exits 0 (it's a legitimate "nothing new today"
+      # outcome, not always a bug), so the pass/fail step outcome alone can't
+      # be trusted -- upload whatever debug evidence the scraper captured
+      # (screenshot + raw HTML of any page where it found zero cards) so a
+      # bot-detection wall or a real markup change can be told apart without
+      # reproducing it by hand.
+      - name: Upload Posh.vip debug capture
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: posh-debug-capture
+          path: ${{ env.SCRAPE_DIR }}/debug/
+          if-no-files-found: ignore
+          retention-days: 5
+
       - name: Import Owl Central CSV
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
@@ -149,11 +164,33 @@ jobs:
       - name: Summary
         if: steps.gate.outputs.run == 'true' && always()
         run: |
+          # A scraper step can exit 0 while still having found nothing --
+          # count the rows it actually produced instead of trusting the step
+          # outcome, so a silent zero-event morning doesn't read as a clean
+          # "success" here the way it does in the raw step list above.
+          count_rows() {
+            f="$1"
+            if [ -f "$f" ]; then
+              n=$(($(wc -l < "$f") - 1))
+              [ "$n" -lt 0 ] && n=0
+              echo "$n"
+            else
+              echo 0
+            fi
+          }
+          owl_count=$(count_rows "$SCRAPE_DIR/college_events_import_fau_owlcentral.csv")
+          school_lower=$(echo "$SCHOOL" | tr '[:upper:]' '[:lower:]')
+          posh_count=$(count_rows "$SCRAPE_DIR/college_events_import_$school_lower.csv")
+
           {
             echo "### Daily pipeline — $SCHOOL"
             echo ""
-            echo "| Scraper | Result |"
-            echo "|---|---|"
-            echo "| Owl Central | ${{ steps.owlcentral.outcome }} |"
-            echo "| Posh.vip | ${{ steps.posh.outcome }} |"
+            echo "| Scraper | Step outcome | Events found |"
+            echo "|---|---|---|"
+            echo "| Owl Central | ${{ steps.owlcentral.outcome }} | $owl_count |"
+            echo "| Posh.vip | ${{ steps.posh.outcome }} | $posh_count |"
+            echo ""
+            if [ "$posh_count" -eq 0 ]; then
+              echo "⚠️ Posh.vip found 0 events. If this repeats, check the \`posh-debug-capture\` artifact on this run for a screenshot/HTML of what the scraper actually saw."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

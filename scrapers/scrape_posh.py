@@ -73,16 +73,32 @@ CARD_EXTRACT_JS = r"""
 """
 
 
-def scrape_explore(url: str, headless: bool = True) -> list[dict]:
+def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = None, debug_label: str = "explore") -> list[dict]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         page = browser.new_page(user_agent=USER_AGENT)
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
         try:
             page.wait_for_selector(".EventCard", timeout=30000)
         except Exception:
             pass
         cards = page.evaluate(CARD_EXTRACT_JS)
+        if not cards:
+            status = response.status if response else "?"
+            title = page.title()
+            print(f"  0 cards found (HTTP {status}, page title: {title!r})", file=sys.stderr)
+            # Zero cards is either a real empty result or a bot-detection wall
+            # (CAPTCHA/challenge page) -- a screenshot + the raw HTML settles
+            # which one happened without needing to reproduce it by hand.
+            if debug_dir:
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                safe = slugify(debug_label)
+                try:
+                    page.screenshot(path=str(debug_dir / f"{safe}.png"), full_page=True)
+                    (debug_dir / f"{safe}.html").write_text(page.content(), encoding="utf-8")
+                    print(f"  saved debug screenshot/html to {debug_dir}/{safe}.*", file=sys.stderr)
+                except Exception as e:
+                    print(f"  debug capture failed: {e}", file=sys.stderr)
         browser.close()
         return cards
 
@@ -235,9 +251,11 @@ def save_college_events_csv(rows: list[dict], path: Path) -> int:
     return len(converted)
 
 
-def scrape_one(school: str, url: str, headless: bool, no_detail: bool, delay: float) -> list[dict]:
+def scrape_one(
+    school: str, url: str, headless: bool, no_detail: bool, delay: float, debug_dir: Path | None = None
+) -> list[dict]:
     print(f"Loading {school}: {url} ...", file=sys.stderr)
-    cards = scrape_explore(url, headless=headless)
+    cards = scrape_explore(url, headless=headless, debug_dir=debug_dir, debug_label=f"{school}_{url}")
     print(f"  found {len(cards)} event cards.", file=sys.stderr)
 
     rows = []
@@ -295,9 +313,10 @@ def main() -> None:
     parser.add_argument("--delay", type=float, default=0.5, help="seconds between per-event detail requests")
     args = parser.parse_args()
     headless = not args.headed
+    debug_dir = Path(args.out_dir) / "debug"
 
     if args.url:
-        rows = scrape_one("adhoc", args.url, headless, args.no_detail, args.delay)
+        rows = scrape_one("adhoc", args.url, headless, args.no_detail, args.delay, debug_dir=debug_dir)
         out_path = Path(args.out) if args.out else Path(args.out_dir) / "posh_events.csv"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         save_csv(rows, out_path)
@@ -330,7 +349,7 @@ def main() -> None:
         rows = []
         seen_urls = set()
         for url in school["urls"]:
-            for row in scrape_one(school["school"], url, headless, args.no_detail, args.delay):
+            for row in scrape_one(school["school"], url, headless, args.no_detail, args.delay, debug_dir=debug_dir):
                 # Nearby locations overlap -- a Fort Lauderdale venue shows up
                 # in the Boca feed too. Dedupe on the event's own page URL,
                 # the only identifier posh.vip guarantees is stable.
