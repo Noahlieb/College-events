@@ -102,7 +102,10 @@ see [Credentials needed before live deployment](#credentials-needed-before-live-
 
 ## Local setup
 
-Requires Node 20+, pnpm, and a Postgres instance (local install or Docker).
+Requires Node 22+, pnpm, and a Postgres instance (local install or Docker).
+Node 22 is a hard floor, not a preference: `@supabase/supabase-js` needs a
+native WebSocket, so rendering fails on Node 20 with "native WebSocket not
+found". An `.nvmrc` is included — `nvm use` picks the right version.
 
 ```bash
 git clone <repo>
