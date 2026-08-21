@@ -196,6 +196,14 @@ Everything below is a subcommand of the worker CLI (`pnpm --filter
 @college-events/worker start <command>`, or `pnpm worker <command>` from the repo
 root). `[school]` defaults to `FAU` (matches `schools.short_name`).
 
+`pnpm worker` rebuilds the workspace packages it depends on first. The worker
+runs from source via tsx, but it imports `@college-events/*` as built packages,
+and `dist/` is gitignored — so after a `git pull` those builds are older than
+the source you just fetched. Without the rebuild you get
+`does not provide an export named ...` for anything newly added. Using the
+longer `pnpm --filter @college-events/worker start` form skips that rebuild;
+run `pnpm build` yourself first if you go that route.
+
 ```bash
 # 1. Discovery: poll every active, adapter-backed source for new content
 pnpm worker ingest [school]
