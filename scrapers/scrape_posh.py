@@ -73,34 +73,80 @@ CARD_EXTRACT_JS = r"""
 """
 
 
+class CloudflareChallenge(RuntimeError):
+    """posh.vip served Cloudflare's bot-management challenge instead of the
+    listings. Raised so callers can report *why* a location produced nothing,
+    rather than reporting an empty result that reads like a quiet failure."""
+
+
+# How long to let a managed challenge clear before concluding the request is
+# blocked. Headless (CI): only long enough for Cloudflare's passive checks to
+# pass a request through on their own -- when they don't, waiting out the full
+# .EventCard timeout just burns CI minutes on a foregone conclusion. Headed: a
+# human is watching and can click the checkbox, which takes longer than any
+# automatic pass would.
+CHALLENGE_GRACE_SECONDS = 12
+HEADED_CHALLENGE_GRACE_SECONDS = 180
+
+
+def _looks_like_challenge(page) -> bool:
+    try:
+        if "just a moment" in (page.title() or "").lower():
+            return True
+        return bool(
+            page.evaluate("() => Boolean(window._cf_chl_opt || document.querySelector('[id^=cf-chl-widget]'))")
+        )
+    except Exception:
+        return False
+
+
+def _capture_debug(page, debug_dir: Path | None, label: str) -> None:
+    """Saves a screenshot + the raw HTML of whatever the browser actually got.
+    A challenge page and a genuinely empty listing look identical in the logs;
+    the capture is what tells them apart after the fact."""
+    if not debug_dir:
+        return
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    safe = slugify(label)
+    try:
+        page.screenshot(path=str(debug_dir / f"{safe}.png"), full_page=True)
+        (debug_dir / f"{safe}.html").write_text(page.content(), encoding="utf-8")
+        print(f"  saved debug screenshot/html to {debug_dir}/{safe}.*", file=sys.stderr)
+    except Exception as e:
+        print(f"  debug capture failed: {e}", file=sys.stderr)
+
+
 def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = None, debug_label: str = "explore") -> list[dict]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         page = browser.new_page(user_agent=USER_AGENT)
-        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
         try:
-            page.wait_for_selector(".EventCard", timeout=30000)
-        except Exception:
-            pass
-        cards = page.evaluate(CARD_EXTRACT_JS)
-        if not cards:
-            status = response.status if response else "?"
-            title = page.title()
-            print(f"  0 cards found (HTTP {status}, page title: {title!r})", file=sys.stderr)
-            # Zero cards is either a real empty result or a bot-detection wall
-            # (CAPTCHA/challenge page) -- a screenshot + the raw HTML settles
-            # which one happened without needing to reproduce it by hand.
-            if debug_dir:
-                debug_dir.mkdir(parents=True, exist_ok=True)
-                safe = slugify(debug_label)
-                try:
-                    page.screenshot(path=str(debug_dir / f"{safe}.png"), full_page=True)
-                    (debug_dir / f"{safe}.html").write_text(page.content(), encoding="utf-8")
-                    print(f"  saved debug screenshot/html to {debug_dir}/{safe}.*", file=sys.stderr)
-                except Exception as e:
-                    print(f"  debug capture failed: {e}", file=sys.stderr)
-        browser.close()
-        return cards
+            response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            grace = CHALLENGE_GRACE_SECONDS if headless else HEADED_CHALLENGE_GRACE_SECONDS
+            deadline = time.time() + grace
+            if _looks_like_challenge(page) and not headless:
+                print(f"  Cloudflare challenge shown — solve it in the browser ({grace}s).", file=sys.stderr)
+            while _looks_like_challenge(page) and time.time() < deadline:
+                page.wait_for_timeout(1000)
+            if _looks_like_challenge(page):
+                _capture_debug(page, debug_dir, debug_label)
+                raise CloudflareChallenge(
+                    "posh.vip served a Cloudflare bot-management challenge instead of the listings"
+                )
+
+            try:
+                page.wait_for_selector(".EventCard", timeout=30000)
+            except Exception:
+                pass
+            cards = page.evaluate(CARD_EXTRACT_JS)
+            if not cards:
+                status = response.status if response else "?"
+                print(f"  0 cards found (HTTP {status}, page title: {page.title()!r})", file=sys.stderr)
+                _capture_debug(page, debug_dir, debug_label)
+            return cards
+        finally:
+            browser.close()
 
 
 FLIGHT_PUSH = re.compile(r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)')
@@ -316,7 +362,17 @@ def main() -> None:
     debug_dir = Path(args.out_dir) / "debug"
 
     if args.url:
-        rows = scrape_one("adhoc", args.url, headless, args.no_detail, args.delay, debug_dir=debug_dir)
+        try:
+            rows = scrape_one("adhoc", args.url, headless, args.no_detail, args.delay, debug_dir=debug_dir)
+        except CloudflareChallenge as e:
+            # This is the manual/local path, so say what to do next rather than
+            # dumping a traceback: --headed lets a human clear the challenge.
+            print(
+                f"BLOCKED: {e}.\nTry re-running with --headed and solving the challenge in the "
+                "browser window that opens.",
+                file=sys.stderr,
+            )
+            sys.exit(3)
         out_path = Path(args.out) if args.out else Path(args.out_dir) / "posh_events.csv"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         save_csv(rows, out_path)
@@ -345,11 +401,21 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     total = 0
+    blocked_schools = []
     for school in schools:
         rows = []
         seen_urls = set()
+        blocked_urls = []
         for url in school["urls"]:
-            for row in scrape_one(school["school"], url, headless, args.no_detail, args.delay, debug_dir=debug_dir):
+            try:
+                scraped = scrape_one(school["school"], url, headless, args.no_detail, args.delay, debug_dir=debug_dir)
+            except CloudflareChallenge as e:
+                # One location being challenged shouldn't discard another that
+                # got through, so record it and keep going.
+                print(f"  BLOCKED: {e}", file=sys.stderr)
+                blocked_urls.append(url)
+                continue
+            for row in scraped:
                 # Nearby locations overlap -- a Fort Lauderdale venue shows up
                 # in the Boca feed too. Dedupe on the event's own page URL,
                 # the only identifier posh.vip guarantees is stable.
@@ -361,8 +427,16 @@ def main() -> None:
                 rows.append(row)
         if len(school["urls"]) > 1:
             print(f"  {school['school']}: {len(rows)} unique events across {len(school['urls'])} locations.", file=sys.stderr)
+        if blocked_urls:
+            blocked_schools.append((school["school"], len(blocked_urls), len(school["urls"])))
         if not rows:
-            print(f"  no events found for {school['school']} -- the page layout may have changed.", file=sys.stderr)
+            if blocked_urls:
+                print(
+                    f"  no events for {school['school']}: every location was blocked by Cloudflare.",
+                    file=sys.stderr,
+                )
+            else:
+                print(f"  no events found for {school['school']} -- the page layout may have changed.", file=sys.stderr)
             continue
         out_path = out_dir / f"posh_events_{slugify(school['school'])}.csv"
         save_csv(rows, out_path)
@@ -375,6 +449,24 @@ def main() -> None:
         total += len(rows)
 
     print(f"Done. {total} events across {len(schools)} school(s).", file=sys.stderr)
+
+    if blocked_schools:
+        detail = ", ".join(f"{name} ({n}/{of} locations)" for name, n, of in blocked_schools)
+        print(
+            f"\nCloudflare blocked: {detail}.\n"
+            "posh.vip runs bot management in front of /explore and challenges automated\n"
+            "traffic, which datacenter IPs (GitHub Actions runners) reliably trip. This is\n"
+            "the site's deliberate access control, not a bug to route around -- import\n"
+            "posh.vip events manually, or ask posh.vip for feed access. See scrapers/README.md.",
+            file=sys.stderr,
+        )
+        # A marker the CI summary reads, so a blocked morning is reported as
+        # blocked rather than as "0 events found".
+        (out_dir / "posh-blocked.txt").write_text(detail + "\n", encoding="utf-8")
+        # Non-zero so the step reads as failed in the Actions UI. The workflow
+        # marks this step continue-on-error, so the rest of the pipeline still
+        # runs on the sources that did work.
+        sys.exit(3)
 
 
 if __name__ == "__main__":
