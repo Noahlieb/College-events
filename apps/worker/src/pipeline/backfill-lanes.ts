@@ -26,6 +26,12 @@ export interface BackfillSummary {
   /** Sports events found to be away/neutral-site and newly flagged, so they
    * stop appearing in posts. */
   awayGamesFlagged: number;
+  awayGamesFlaggedNames: string[];
+  /** Sports events examined, and how many carried no home/away indicator on
+   * any of their sources. A high count here with zero flagged means the data
+   * never had the field -- not that every game is at home. */
+  sportsEventsInspected: number;
+  sportsEventsWithoutIndicator: number;
 }
 
 /**
@@ -50,6 +56,9 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
     eventsRescored: 0,
     postsOrphaned: 0,
     awayGamesFlagged: 0,
+    awayGamesFlaggedNames: [],
+    sportsEventsInspected: 0,
+    sportsEventsWithoutIndicator: 0,
   };
 
   // 1. Drop schedule slots whose post type no longer has a lane (midweek).
@@ -159,24 +168,57 @@ export async function backfillLanes(schoolId: string, dryRun = false): Promise<B
   // 4. Flag sports events that are away/neutral-site games. Events created
   //    before home/away routing existed carry no flag, so they would keep
   //    appearing in posts until something re-created them -- and nothing
-  //    ever does, since process.ts only touches new raw content. The
-  //    indicator is read back off the raw content each event came from.
+  //    ever does, since process.ts only touches new raw content.
+  //
+  //    The indicator is looked for across EVERY raw content linked to the
+  //    event, not just originalRawContentId: a game that also appeared on
+  //    Owl Central may have been created from that item and merged with the
+  //    athletics one later, which would leave the only source that knows
+  //    where the game is played sitting outside the "original".
   const sportsEvents = await db
     .select({ id: events.id, name: events.name, flags: events.flags, rawId: events.originalRawContentId })
     .from(events)
     .where(and(eq(events.schoolId, schoolId), eq(events.category, "sports"), ne(events.status, "rejected")));
 
+  summary.sportsEventsInspected = sportsEvents.length;
   const unflagged = sportsEvents.filter((e) => !e.flags.includes(AWAY_GAME_FLAG));
+
   if (unflagged.length > 0) {
-    const raws = await db
+    const eventIds = unflagged.map((e) => e.id);
+    const links = await db
+      .select({ eventId: eventSources.eventId, rawMetadata: rawContent.rawMetadata })
+      .from(eventSources)
+      .innerJoin(rawContent, eq(eventSources.rawContentId, rawContent.id))
+      .where(inArray(eventSources.eventId, eventIds));
+
+    // Plus the originals, in case an event predates event_sources rows.
+    const originals = await db
       .select({ id: rawContent.id, rawMetadata: rawContent.rawMetadata })
       .from(rawContent)
       .where(inArray(rawContent.id, unflagged.map((e) => e.rawId)));
-    const indicatorById = new Map(raws.map((r) => [r.id, r.rawMetadata?.locationIndicator]));
+    const originalById = new Map(originals.map((r) => [r.id, r.rawMetadata]));
+
+    const indicatorsByEvent = new Map<string, unknown[]>();
+    for (const link of links) {
+      const list = indicatorsByEvent.get(link.eventId) ?? [];
+      list.push(link.rawMetadata?.locationIndicator);
+      indicatorsByEvent.set(link.eventId, list);
+    }
+    for (const event of unflagged) {
+      const list = indicatorsByEvent.get(event.id) ?? [];
+      list.push(originalById.get(event.rawId)?.locationIndicator);
+      indicatorsByEvent.set(event.id, list);
+    }
 
     for (const event of unflagged) {
-      if (!isAwayIndicator(indicatorById.get(event.rawId))) continue;
+      const indicators = (indicatorsByEvent.get(event.id) ?? []).filter((v) => typeof v === "string" && v.trim());
+      if (indicators.length === 0) {
+        summary.sportsEventsWithoutIndicator++;
+        continue;
+      }
+      if (!indicators.some((v) => isAwayIndicator(v))) continue;
       summary.awayGamesFlagged++;
+      summary.awayGamesFlaggedNames.push(event.name);
       if (!dryRun) {
         await db
           .update(events)
