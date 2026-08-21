@@ -13,8 +13,9 @@ Two stages:
 Both stages only touch /explore and /e/ paths, which posh.vip's robots.txt
 explicitly allows for a generic user agent.
 
-By default, scrapes every school listed in schools.json (one posh.vip
-/explore location per school) and writes posh_events_<school>.csv per school.
+By default, scrapes every school listed in schools.json (one or more
+posh.vip /explore locations per school, merged and deduped) and writes
+posh_events_<school>.csv per school.
 Pass --url for a one-off scrape of a single location instead.
 """
 import argparse
@@ -251,12 +252,35 @@ def scrape_one(school: str, url: str, headless: bool, no_detail: bool, delay: fl
 
 
 def load_schools(config_path: Path) -> list[dict]:
+    """Loads schools.json, normalising each entry to a `urls` list.
+
+    A school can have several posh.vip location pages -- FAU students go out
+    in both Boca Raton and Fort Lauderdale -- so an entry may carry either a
+    single `url` or a list of `urls`. They are merged into one CSV per
+    school rather than one per location: the per-school import CSV is
+    written in "w" mode, so two entries sharing a school name would
+    silently overwrite each other and quietly drop half the events.
+    """
     with config_path.open() as f:
         schools = json.load(f)
+    normalised = []
     for s in schools:
-        if "school" not in s or "url" not in s:
-            raise ValueError(f"schools.json entry missing 'school' or 'url': {s}")
-    return schools
+        if "school" not in s:
+            raise ValueError(f"schools.json entry missing 'school': {s}")
+        urls = s.get("urls") or ([s["url"]] if s.get("url") else [])
+        if not urls:
+            raise ValueError(f"schools.json entry for {s['school']} has no 'url' or 'urls': {s}")
+        normalised.append({**s, "urls": urls})
+
+    seen = {}
+    for s in normalised:
+        if s["school"] in seen:
+            raise ValueError(
+                f"schools.json lists '{s['school']}' more than once. Use a single entry with a "
+                f"'urls' list instead -- separate entries overwrite each other's import CSV."
+            )
+        seen[s["school"]] = True
+    return normalised
 
 
 def main() -> None:
@@ -278,6 +302,8 @@ def main() -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         save_csv(rows, out_path)
         print(f"Saved {len(rows)} events to {out_path}", file=sys.stderr)
+        ce_path = out_path.parent / "college_events_import_adhoc.csv"
+        print(f"Wrote {save_college_events_csv(rows, ce_path)} College-events-ready rows to {ce_path}", file=sys.stderr)
         return
 
     config_path = Path(args.config)
@@ -301,7 +327,21 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     total = 0
     for school in schools:
-        rows = scrape_one(school["school"], school["url"], headless, args.no_detail, args.delay)
+        rows = []
+        seen_urls = set()
+        for url in school["urls"]:
+            for row in scrape_one(school["school"], url, headless, args.no_detail, args.delay):
+                # Nearby locations overlap -- a Fort Lauderdale venue shows up
+                # in the Boca feed too. Dedupe on the event's own page URL,
+                # the only identifier posh.vip guarantees is stable.
+                key = row.get("event_url")
+                if key and key in seen_urls:
+                    continue
+                if key:
+                    seen_urls.add(key)
+                rows.append(row)
+        if len(school["urls"]) > 1:
+            print(f"  {school['school']}: {len(rows)} unique events across {len(school['urls'])} locations.", file=sys.stderr)
         if not rows:
             print(f"  no events found for {school['school']} -- the page layout may have changed.", file=sys.stderr)
             continue

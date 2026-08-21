@@ -20,9 +20,22 @@ directly by `pnpm worker ingest`.
 
 ## schools.json
 
-`scrape_posh.py` reads this to know which posh.vip location page maps to
+`scrape_posh.py` reads this to know which posh.vip location pages map to
 which school. Each entry needs a `school` (matching `schools.short_name` in
-the database) and the `url` of that school's posh.vip explore page.
+the database) and either a single `url` or a `urls` list.
+
+A school can span several nightlife areas — FAU students go out in both
+Boca Raton and Fort Lauderdale — so list them under **one** entry:
+
+```json
+[{ "school": "FAU", "urls": ["...boca...", "...fort-lauderdale..."] }]
+```
+
+All of a school's locations are scraped and merged into one import CSV,
+deduped on each event's own page URL (nearby feeds overlap). Listing the
+same school twice as separate entries is rejected with an error: the
+per-school import CSV is written in `"w"` mode, so the second entry would
+silently overwrite the first and drop half the events.
 
 **Verify the URL for your campus.** posh.vip scopes listings by location,
 so a wrong or missing location parameter silently scrapes the wrong city's
