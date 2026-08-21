@@ -14,36 +14,41 @@ being awake.
 | `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | Yes |
 | `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
 
-## posh.vip challenges headless browsers
+## posh.vip: two separate problems, one fixed
 
-posh.vip runs Cloudflare bot management in front of `/explore` and serves a
-managed challenge ("Performing security verification") instead of the listings.
+**1. Stale selector (fixed 2026-08-21).** posh.vip renamed its listing class
+from `.EventCard` to `.explore-event-card`. The scraper searched for a class
+that no longer existed, found nothing, and reported it as an empty result.
+Both classes are now tried, newest first.
 
-Confirmed 2026-08-21, both FAU locations, **from GitHub Actions runners _and_
-from a residential connection** — so this is not about datacenter IP ranges.
-Playwright's headless Chromium is what gets flagged, wherever it runs. This
-scraper used to work unattended; posh.vip appears to have tightened its bot
-management since.
+Because the class names moved once, extraction no longer leans on them: the
+card only has to yield the event's **slug**, and everything the importer needs
+(name, times, venue, address, description, image) comes from the schema.org
+JSON-LD on that event's `/e/` page. Card title/date/venue are best-effort
+fallbacks and may be `null`.
 
-**This is the site's deliberate access control, so the scraper does not try to
-defeat it** — no CAPTCHA-solving services, no fingerprint spoofing, no
-residential proxies. `robots.txt` permitting `/explore` does not override an
-active edge challenge.
+**2. Cloudflare challenges headless runs (not fixed, not fixable here).**
+Headless requests get a managed challenge ("Just a moment...") instead of the
+listings — confirmed from GitHub Actions runners *and* from a residential
+connection, so this is not about datacenter IPs. `--headed` is not challenged.
 
-What the scraper does instead: it detects the challenge, gives it a short
-grace period in case it clears on its own, then stops with a clear "blocked by
-Cloudflare" message and exit code 3. The daily workflow marks that step
-`continue-on-error`, so Owl Central and FAU Athletics still flow into the
-day's posts; the run summary reports the block explicitly rather than
-reporting zero events.
+The scraper does not try to defeat the challenge: no CAPTCHA-solving services,
+no fingerprint spoofing, no proxies. `robots.txt` permitting `/explore` does
+not override an active edge challenge. It detects the interstitial, stops with
+a clear message and exit code 3, and the daily workflow marks that step
+`continue-on-error` so Owl Central and FAU Athletics still flow into the day's
+posts.
+
+**Net effect: this source cannot run unattended in CI, but `--headed` works
+locally.**
 
 Getting nightlife events in, in order of preference:
 
 1. **Ask posh.vip for feed/API access.** The durable fix if they agree.
-2. **Import manually with `--headed`.** A real browser window opens; when the
-   challenge appears, solve it yourself and the scrape continues (it waits up
-   to 3 minutes for you). This is the only route that still reaches the
-   listings, since headless runs are challenged everywhere:
+2. **Import manually with `--headed`.** A real browser window opens and is
+   generally *not* challenged; if one does appear, solve it and the scrape
+   continues (it waits up to 3 minutes). This is the only route that reaches
+   the listings, since headless runs are challenged everywhere:
 
    ```bash
    python scrapers/scrape_posh.py --headed --out-dir /tmp/scrape
