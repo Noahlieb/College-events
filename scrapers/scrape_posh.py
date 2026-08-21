@@ -152,6 +152,11 @@ class CloudflareChallenge(RuntimeError):
 CONTENT_TIMEOUT_MS = 30000
 HEADED_CONTENT_TIMEOUT_MS = 180000
 
+# Extra time granted to the location-scoped list once the trending rail has
+# already rendered. Only ever spent when the two disagree, so the common case
+# pays nothing for it.
+SCOPED_LIST_GRACE_MS = 20000
+
 
 def _looks_like_challenge(page) -> bool:
     """Whether the browser is sitting on Cloudflare's interstitial.
@@ -209,6 +214,17 @@ def scrape_explore(url: str, headless: bool = True, debug_dir: Path | None = Non
                 )
             try:
                 page.wait_for_selector(CARD_SELECTOR_CSS, timeout=timeout)
+            except Exception:
+                pass
+
+            # Whichever list rendered first won that wait, and the trending rail
+            # is consistently faster than the location-scoped one -- which is how
+            # a Boca scrape came back holding a rail full of out-of-state events
+            # while .EventCard was still on its way. Having seen the rail, give
+            # the scoped list its own moment before settling for second best.
+            try:
+                if page.query_selector(".EventCard") is None and page.query_selector(".explore-event-card"):
+                    page.wait_for_selector(".EventCard", timeout=SCOPED_LIST_GRACE_MS)
             except Exception:
                 pass
 
