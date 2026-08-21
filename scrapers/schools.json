@@ -1,6 +1,6 @@
 [
   {
     "school": "FAU",
-    "url": "https://posh.vip/explore?location=Miami"
+    "url": "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Fort+Lauderdale%2C+FL%2C+USA%22%2C%22long%22%3A-80.13731740000001%2C%22lat%22%3A26.1224386%7D"
   }
 ]
