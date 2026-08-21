@@ -1,0 +1,32 @@
+{
+  "name": "college-events",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Automated College Events Media Network — multi-tenant event intelligence and Instagram content engine",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "db:migrate": "pnpm --filter @college-events/db migrate",
+    "db:seed": "pnpm --filter @college-events/db seed",
+    "db:reset": "pnpm --filter @college-events/db reset",
+    "db:studio": "pnpm --filter @college-events/db studio",
+    "worker": "pnpm --filter @college-events/worker start",
+    "dashboard": "pnpm --filter @college-events/dashboard dev",
+    "demo": "pnpm --filter @college-events/worker demo",
+    "deploy:render-service": "pnpm --filter @college-events/worker... build && rm -rf .vercel && cp -r apps/render-service/.vercel .vercel && vercel --prod --yes",
+    "deploy:dashboard": "pnpm --filter @college-events/dashboard... build && rm -rf .vercel && cp -r apps/dashboard/.vercel .vercel && vercel --prod --yes"
+  },
+  "devDependencies": {
+    "vercel": "^59.1.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.33.5"
+    }
+  }
+}

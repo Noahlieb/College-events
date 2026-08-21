@@ -1,0 +1,25 @@
+# Controls what `vercel` CLI deploys upload from this machine.
+#
+# This file exists for one load-bearing reason: when it is absent, the CLI
+# falls back to .gitignore, which excludes dist/ — so the compiled output of
+# the workspace packages never uploaded, and deployed functions could only
+# get @college-events/* code from whatever Vercel's remote build cache had
+# (which turned out to be a stale first-deploy build, frozen while every
+# source-level fix was invisibly ignored). With this file present, dist/ is
+# deliberately NOT ignored: build locally, and the deploy carries exactly
+# the code you built.
+#
+# Because .gitignore no longer applies to uploads, secrets and junk must be
+# excluded here explicitly.
+node_modules
+.git
+.next
+.vercel
+.turbo
+coverage
+storage
+*.log
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
