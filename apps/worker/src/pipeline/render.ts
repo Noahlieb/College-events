@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { renderCoverSlide, renderEventSlide, type SlideBranding } from "@college-events/render";
 import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib/storage.js";
@@ -114,11 +114,24 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     assetUrls.push(slideUrl);
   }
 
-  // Now that every replacement is written and recorded, drop the old objects.
-  // Anything still in use (an unchanged slide hashes to the same path) is
-  // excluded, so this never deletes a file the new render depends on.
-  const stillReferenced = new Set(assetUrls);
-  await deleteAssets(supersededUrls.filter((u) => !stillReferenced.has(u)));
+  // Now that every replacement is written and recorded, drop the old objects
+  // -- but only those nothing references any more, asking the whole table
+  // rather than just this post. Event slides live at a path keyed by event
+  // ("events/<eventId>/..."), so the same object can back a slide in more
+  // than one post; deciding from one post's list alone deleted a file another
+  // post was still pointing at, leaving a broken image in its carousel.
+  const candidates = supersededUrls.filter((u) => !assetUrls.includes(u));
+  if (candidates.length > 0) {
+    const stillReferenced = new Set(
+      (
+        await db
+          .select({ storageUrl: renderedAssets.storageUrl })
+          .from(renderedAssets)
+          .where(inArray(renderedAssets.storageUrl, candidates))
+      ).map((r) => r.storageUrl),
+    );
+    await deleteAssets(candidates.filter((u) => !stillReferenced.has(u)));
+  }
 
   return { postId, slideCount: assetUrls.length, assetUrls };
 }
