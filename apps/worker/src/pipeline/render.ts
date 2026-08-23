@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { renderCoverSlide, renderEventSlide, type SlideBranding } from "@college-events/render";
-import { assetPath, saveAsset } from "../lib/storage.js";
+import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib/storage.js";
 import { formatDateKicker, formatTimeRange } from "../lib/format.js";
 import { mondayOfWeek, formatWeekRangeLabel } from "../lib/week.js";
 
@@ -47,6 +47,12 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     wordmark: school.instagramAccount ?? `@${school.shortName.toLowerCase()}`,
   };
 
+  // Keep the outgoing URLs so their storage objects can be cleaned up once
+  // the new ones are safely written. Deleting the rows alone would orphan the
+  // files; deleting the files first would blank the post if a render failed.
+  const supersededUrls = (
+    await db.select({ storageUrl: renderedAssets.storageUrl }).from(renderedAssets).where(eq(renderedAssets.postId, postId))
+  ).map((r) => r.storageUrl);
   await db.delete(renderedAssets).where(eq(renderedAssets.postId, postId));
 
   const linkedEvents = await db
@@ -65,7 +71,7 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     subtitle: linkedEvents.length > 0 ? "Swipe for the full lineup →" : null,
     branding,
   });
-  const coverPath = assetPath(school.shortName, "posts", postId, "cover.jpg");
+  const coverPath = contentAddressedPath(assetPath(school.shortName, "posts", postId, "cover.jpg"), coverBuffer);
   const coverUrl = await saveAsset(coverPath, coverBuffer);
   await db.insert(renderedAssets).values({
     postId,
@@ -91,7 +97,10 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
       category: event.category,
       branding,
     });
-    const slidePath = assetPath(school.shortName, "events", event.id, "rendered-v1.jpg");
+    const slidePath = contentAddressedPath(
+      assetPath(school.shortName, "events", event.id, "rendered-v1.jpg"),
+      slideBuffer,
+    );
     const slideUrl = await saveAsset(slidePath, slideBuffer);
     await db.insert(renderedAssets).values({
       postId,
@@ -104,6 +113,12 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     });
     assetUrls.push(slideUrl);
   }
+
+  // Now that every replacement is written and recorded, drop the old objects.
+  // Anything still in use (an unchanged slide hashes to the same path) is
+  // excluded, so this never deletes a file the new render depends on.
+  const stillReferenced = new Set(assetUrls);
+  await deleteAssets(supersededUrls.filter((u) => !stillReferenced.has(u)));
 
   return { postId, slideCount: assetUrls.length, assetUrls };
 }

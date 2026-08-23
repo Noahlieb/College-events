@@ -52,17 +52,31 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
     : null;
 
   // ── compute stacked block heights (top to bottom) ──
-  const dateH = input.date ? 34 * 1.3 : 0;
-  const gap1 = input.date ? 14 : 0;
+  //
+  // Gaps are only reserved when something actually follows, and the final
+  // block's trailing leading is swapped for a fixed descender pad. Without
+  // both, the bottom margin depends on which block happens to end the stack:
+  // a slide with no description sat 86px off the bottom and a title-only one
+  // 103px, against the 64px margin every other edge uses.
   const titleLineH = title.fontSize * 1.08;
-  const titleH = title.lines.length * titleLineH;
-  const gap2 = 22;
   const metaLineH = (meta?.fontSize ?? 0) * 1.35;
-  const metaH = meta ? meta.lines.length * metaLineH : 0;
-  const gap3 = meta ? 16 : 0;
   const descLineH = (description?.fontSize ?? 0) * 1.4;
+
+  const dateH = input.date ? 34 * 1.3 : 0;
+  const gapAfterDate = input.date ? 14 : 0;
+  const titleH = title.lines.length * titleLineH;
+  const gapAfterTitle = meta || description ? 22 : 0;
+  const metaH = meta ? meta.lines.length * metaLineH : 0;
+  const gapAfterMeta = meta && description ? 16 : 0;
   const descH = description ? description.lines.length * descLineH : 0;
-  const totalContentH = dateH + gap1 + titleH + gap2 + metaH + gap3 + descH;
+
+  /** Leading below the last baseline, which no following block will use. */
+  const trailingSlack = description ? descLineH * 0.3 : meta ? metaLineH * 0.3 : titleLineH * 0.3;
+  /** Enough room for descenders (g, y, p) without touching the frame edge. */
+  const DESCENDER_PAD = 10;
+
+  const totalContentH =
+    dateH + gapAfterDate + titleH + gapAfterTitle + metaH + gapAfterMeta + descH - trailingSlack + DESCENDER_PAD;
   const gradientStartFrac = Math.min(0.72, Math.max(0.32, 1 - (totalContentH + MARGIN * 1.6) / SLIDE_HEIGHT));
 
   let cursorY = SLIDE_HEIGHT - MARGIN - totalContentH;
@@ -72,17 +86,17 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   if (input.date) {
     cursorY += dateH * 0.75; // move to baseline for this block
     parts.push(textPathElement(bodyBold, input.date.toUpperCase(), MARGIN, cursorY, 34, { fill: branding.accentColor }));
-    cursorY += dateH * 0.25 + gap1;
+    cursorY += dateH * 0.25 + gapAfterDate;
   }
 
   cursorY += title.fontSize * 0.88;
   parts.push(linesToPaths(display, title.lines, MARGIN, cursorY, titleLineH, title.fontSize, { fill: "#FFFFFF" }));
-  cursorY += titleLineH * (title.lines.length - 1) + titleLineH * 0.3 + gap2;
+  cursorY += titleLineH * (title.lines.length - 1) + titleLineH * 0.3 + gapAfterTitle;
 
   if (meta) {
     cursorY += meta.fontSize * 0.85;
     parts.push(linesToPaths(bodyBold, meta.lines, MARGIN, cursorY, metaLineH, meta.fontSize, { fill: "#FFFFFF", opacity: 0.95 }));
-    cursorY += metaLineH * (meta.lines.length - 1) + metaLineH * 0.3 + gap3;
+    cursorY += metaLineH * (meta.lines.length - 1) + metaLineH * 0.3 + gapAfterMeta;
   }
 
   if (description) {
