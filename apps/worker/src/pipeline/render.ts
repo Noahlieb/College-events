@@ -88,7 +88,6 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
       time: formatTimeRange(event.startAt.toISOString(), event.endAt?.toISOString() ?? null, school.timezone),
       price: event.price,
       description: event.description,
-      source: event.sourceName,
       category: event.category,
       branding,
     });

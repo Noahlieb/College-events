@@ -23,7 +23,6 @@ describe("renderEventSlide", () => {
       time: "10AM–1PM",
       price: "Free",
       description: "Grab free coffee and snacks before midterms week.",
-      source: "FAU Student Government",
       category: "campus",
       branding,
     });
@@ -44,7 +43,6 @@ describe("renderEventSlide", () => {
       price: "Free with Owl Card",
       description:
         "A very long description that goes on and on describing every possible detail of the event in excessive length to test wrapping and truncation behavior thoroughly.",
-      source: "FAU Athletics",
       category: "sports",
       branding,
     });
@@ -68,7 +66,6 @@ describe("renderEventSlide", () => {
       time: "10PM–2AM",
       price: "Free before 11",
       description: "Back-to-school nightlife event with resident DJ and drink specials.",
-      source: "Bounce Delray Beach",
       category: "nightlife",
       branding,
     });
