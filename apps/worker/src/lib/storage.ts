@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +39,47 @@ const CONTENT_TYPES: Record<string, string> = {
  */
 export function assetPath(schoolShortName: string, ...segments: string[]): string {
   return path.join("schools", schoolShortName.toLowerCase(), ...segments);
+}
+
+/**
+ * Inserts a short hash of the bytes into the filename, so re-rendered content
+ * lands at a NEW path instead of overwriting the old one.
+ *
+ * Overwriting in place looks tidy but is not reliably visible: Supabase
+ * Storage sits behind a CDN that caches by path, a browser caches by URL, and
+ * a deployed dashboard may be an older build that doesn't append a
+ * cache-busting query param. Every one of those independently keeps showing
+ * the previous bytes, and a change to a slide then appears not to have
+ * happened at all. A content-addressed path defeats all three at once,
+ * because there is no old copy sitting at the new URL to serve.
+ *
+ * Identical content hashes to the same path, so re-rendering an unchanged
+ * slide stays idempotent and costs no extra storage.
+ */
+export function contentAddressedPath(basePath: string, buffer: Buffer): string {
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 12);
+  const ext = path.extname(basePath);
+  return path.join(path.dirname(basePath), `${path.basename(basePath, ext)}-${hash}${ext}`);
+}
+
+/**
+ * Best-effort removal of assets a re-render has replaced. Failure is logged
+ * by the caller and never fatal: a leftover object costs a little storage,
+ * whereas throwing here would fail a render that already succeeded.
+ */
+export async function deleteAssets(storageUrls: string[]): Promise<void> {
+  if (storageUrls.length === 0) return;
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET || "college-events-media";
+    const marker = `/object/public/${bucket}/`;
+    const paths = storageUrls
+      .filter((u) => u.includes(marker))
+      .map((u) => decodeURIComponent(u.split(marker)[1]!.split("?")[0]!));
+    if (paths.length > 0) await supabase.storage.from(bucket).remove(paths);
+    return;
+  }
+  await Promise.all(storageUrls.map((p) => fs.rm(p, { force: true }).catch(() => {})));
 }
 
 /**
