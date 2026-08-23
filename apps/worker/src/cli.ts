@@ -7,6 +7,7 @@ import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
 import { renderAllPosts } from "./pipeline/render-all.js";
+import { listAssets } from "./pipeline/list-assets.js";
 import { approvePost, rejectPost } from "./pipeline/approve.js";
 import { schedulePost } from "./pipeline/schedule.js";
 import { importPhantomBusterResults } from "./pipeline/phantombuster.js";
@@ -38,6 +39,8 @@ Commands:
   render <postId>                          Render a post's branded carousel
   render-all [school]                      Re-render every current/future post that can still change
                                             (skips published posts and past weeks)
+  list-assets [school]                     Print every post's rendered assets and their storage URLs
+                                            (shows which are content-addressed vs. stale paths)
   approve <postId> <approvedBy>            Approve a post for scheduling
   reject <postId> <reason> <rejectedBy>    Reject a post
   schedule <postId>                        Send an approved post to the scheduler (Buffer/mock)
@@ -110,6 +113,11 @@ async function main() {
         console.error(`${failed} of ${results.length} post(s) failed to render.`);
         process.exitCode = 1;
       }
+      break;
+    }
+    case "list-assets": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      await listAssets(schoolId);
       break;
     }
     case "render": {
