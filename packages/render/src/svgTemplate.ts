@@ -23,7 +23,7 @@ function linesToPaths(
  * background by renderSlide.ts. Bottom-anchored stacked layout, in the
  * spirit of the reference style described in spec §18/§53: hero image
  * intact, dark gradient rising from the bottom, condensed title, then
- * date/venue/time/price/description/source in descending emphasis.
+ * date/venue/time/price/description in descending emphasis.
  *
  * Every piece of text is outlined to an SVG path via the bundled fonts
  * (fonts.ts) rather than rendered as `<text>` — see fonts.ts for why.
@@ -51,8 +51,6 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
     ? fitText(input.description, { font: bodyRegular, boxWidth: CONTENT_WIDTH, startFontSize: 30, minFontSize: 24, maxLines: 2 })
     : null;
 
-  const attributionText = input.source ? `Source: ${input.source}` : null;
-
   // ── compute stacked block heights (top to bottom) ──
   const dateH = input.date ? 34 * 1.3 : 0;
   const gap1 = input.date ? 14 : 0;
@@ -64,11 +62,7 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const gap3 = meta ? 16 : 0;
   const descLineH = (description?.fontSize ?? 0) * 1.4;
   const descH = description ? description.lines.length * descLineH : 0;
-  const gap4 = description ? 20 : 0;
-  const attrH = attributionText ? 22 * 1.4 : 0;
-  const gap5 = attributionText ? 16 : 0;
-
-  const totalContentH = dateH + gap1 + titleH + gap2 + metaH + gap3 + descH + gap4 + attrH + gap5;
+  const totalContentH = dateH + gap1 + titleH + gap2 + metaH + gap3 + descH;
   const gradientStartFrac = Math.min(0.72, Math.max(0.32, 1 - (totalContentH + MARGIN * 1.6) / SLIDE_HEIGHT));
 
   let cursorY = SLIDE_HEIGHT - MARGIN - totalContentH;
@@ -96,14 +90,7 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
     parts.push(
       linesToPaths(bodyRegular, description.lines, MARGIN, cursorY, descLineH, description.fontSize, { fill: "#FFFFFF", opacity: 0.85 }),
     );
-    cursorY += descLineH * (description.lines.length - 1) + descLineH * 0.3 + gap4;
-  }
-
-  if (attributionText) {
-    cursorY += 22 * 0.85;
-    parts.push(
-      textPathElement(bodyBold, attributionText.toUpperCase(), MARGIN, cursorY, 22, { fill: "#FFFFFF", opacity: 0.65 }),
-    );
+    cursorY += descLineH * (description.lines.length - 1) + descLineH * 0.3;
   }
 
   const categoryLabel = input.category.replace(/_/g, " ").toUpperCase();

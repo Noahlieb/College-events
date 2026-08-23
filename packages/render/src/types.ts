@@ -17,7 +17,6 @@ export interface EventSlideInput {
   time: string | null; // pre-formatted, e.g. "5PM–8:30PM"
   price: string | null;
   description: string | null;
-  source: string | null;
   category: string;
   branding: SlideBranding;
 }
