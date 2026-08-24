@@ -49,6 +49,7 @@ export async function updateEventAction(eventId: string, formData: FormData) {
   const price = String(formData.get("price") ?? "");
   const description = String(formData.get("description") ?? "");
   const category = String(formData.get("category") ?? "other") as EventCategory;
+  const postId = String(formData.get("postId") ?? "");
 
   await db
     .update(events)
@@ -56,6 +57,13 @@ export async function updateEventAction(eventId: string, formData: FormData) {
     .where(eq(events.id, eventId));
   revalidatePath("/events");
   revalidatePath(`/events/${eventId}`);
+  // Post pages show this event's name and its rendered slide, so leaving them
+  // cached made a saved edit look like it hadn't saved at all.
+  revalidatePath("/posts", "layout");
+
+  // Came from a post's "Edit text" button: go back there, where the change is
+  // visible, instead of sitting on a form that looks untouched.
+  if (postId) redirect(`/posts/${postId}`);
 }
 
 /** Merges a duplicate event into a primary one: re-points its raw source
