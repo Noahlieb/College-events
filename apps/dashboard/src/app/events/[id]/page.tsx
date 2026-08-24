@@ -75,6 +75,7 @@ export default async function EventDetailPage({
           </p>
           <form action={updateEventAction.bind(null, event.id)} style={{ padding: 16 }}>
             <label>Name</label>
+            {postId ? <input type="hidden" name="postId" value={postId} /> : null}
             <input name="name" defaultValue={event.name} />
             <label>Venue</label>
             <input name="venue" defaultValue={event.venue ?? ""} />
