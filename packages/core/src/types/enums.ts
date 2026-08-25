@@ -4,6 +4,72 @@
  * the Postgres pgEnum definitions in @college-events/db must match.
  */
 
+/**
+ * ADAPTER TYPES — *how* we talk to a platform, independent of any school.
+ *
+ * This is the reusable half of the source model: one adapter serves every
+ * university running that platform. `campuslabs` works for FAU's Owl Central
+ * and UCF's Knight Connect alike; the school-specific host/org id lives in
+ * `sources.config`, never in adapter code.
+ *
+ * Distinct from SOURCE_TYPES below, which describes *what a source is*
+ * (athletics site, venue, watchlist) rather than how it is fetched.
+ */
+export const ADAPTER_TYPES = [
+  // Campus event platforms
+  "campuslabs", // Anthology/CampusLabs Engage (Owl Central, Knight Connect, ...)
+  "campusgroups",
+  "localist",
+  "25live", // CollegeNET Series25
+  "sidearm", // SIDEARM Sports athletics sites
+  // Generic structured formats
+  "rss",
+  "ical",
+  "google_calendar",
+  "jsonld",
+  "wordpress",
+  // Ticketing / nightlife platforms
+  "eventbrite",
+  "posh",
+  "partiful",
+  "luma",
+  "ticketmaster",
+  "tixr",
+  // Fallbacks and non-crawled inputs
+  "generic_web",
+  "external_social", // pushed in by an authorized connector; never scraped here
+  "manual",
+] as const;
+export type AdapterType = (typeof ADAPTER_TYPES)[number];
+
+/**
+ * Operational health of a source instance. DEGRADED specifically means
+ * "this source is reachable in principle but is refusing automated access
+ * right now" (e.g. an anti-bot challenge) — it is not a bug to fix by
+ * trying harder, and it must never fail the wider ingestion run.
+ */
+export const SOURCE_HEALTH_STATUSES = [
+  "healthy",
+  "warning", // still responding, but yield looks wrong (see source health rules)
+  "degraded", // access denied/challenged — back off, let other sources cover
+  "failed",
+  "disabled",
+] as const;
+export type SourceHealthStatus = (typeof SOURCE_HEALTH_STATUSES)[number];
+
+/** Real-world things that own sources. One venue may have 4 sources. */
+export const ENTITY_TYPES = ["organization", "venue", "promoter", "department", "university"] as const;
+export type EntityType = (typeof ENTITY_TYPES)[number];
+
+/** Review lifecycle for a machine-discovered source candidate. */
+export const DISCOVERY_CANDIDATE_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "auto_approved",
+] as const;
+export type DiscoveryCandidateStatus = (typeof DISCOVERY_CANDIDATE_STATUSES)[number];
+
 export const SOURCE_TYPES = [
   "instagram",
   "owl_central",

@@ -14,12 +14,16 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
+  ADAPTER_TYPES,
+  DISCOVERY_CANDIDATE_STATUSES,
+  ENTITY_TYPES,
   EVENT_CATEGORIES,
   EVENT_STATUSES,
   POST_STATUSES,
   POST_TYPES,
   PROCESSING_STATUSES,
   SOURCE_CATEGORIES,
+  SOURCE_HEALTH_STATUSES,
   SOURCE_TYPES,
   VERIFICATION_STATUSES,
   type BucketScores,
@@ -31,6 +35,13 @@ import {
 
 // ── enums ──────────────────────────────────────────────────────────
 export const sourceTypeEnum = pgEnum("source_type", SOURCE_TYPES);
+export const adapterTypeEnum = pgEnum("adapter_type", ADAPTER_TYPES);
+export const sourceHealthStatusEnum = pgEnum("source_health_status", SOURCE_HEALTH_STATUSES);
+export const entityTypeEnum = pgEnum("entity_type", ENTITY_TYPES);
+export const discoveryCandidateStatusEnum = pgEnum(
+  "discovery_candidate_status",
+  DISCOVERY_CANDIDATE_STATUSES,
+);
 export const sourceCategoryEnum = pgEnum("source_category", SOURCE_CATEGORIES);
 export const eventCategoryEnum = pgEnum("event_category", EVENT_CATEGORIES);
 export const processingStatusEnum = pgEnum("processing_status", PROCESSING_STATUSES);
@@ -40,24 +51,43 @@ export const postTypeEnum = pgEnum("post_type", POST_TYPES);
 export const postStatusEnum = pgEnum("post_status", POST_STATUSES);
 export const logLevelEnum = pgEnum("log_level", ["debug", "info", "warn", "error"]);
 
-// ── tenants ────────────────────────────────────────────────────────
+// ── universities (tenants) ─────────────────────────────────────────
+// Named `schools` for continuity with existing data and ~40 files of
+// `schoolId` references; this IS the first-class university entity the
+// multi-university architecture is built on, and `universities` is
+// exported below as the preferred alias for new code.
 export const schools = pgTable("schools", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   shortName: text("short_name").notNull().unique(),
+  /** Apex domain, e.g. "fau.edu" — the anchor for `site:` discovery queries
+   * and for deciding whether a discovered URL is first-party. */
+  primaryDomain: text("primary_domain"),
   city: text("city").notNull(),
   state: text("state").notNull(),
+  country: text("country").notNull().default("US"),
   latitude: doublePrecision("latitude").notNull(),
   longitude: doublePrecision("longitude").notNull(),
   timezone: text("timezone").notNull(),
   active: boolean("active").notNull().default(true),
   branding: jsonb("branding").notNull().default({}).$type<SchoolBranding>(),
   defaultRadiusMiles: integer("default_radius_miles").notNull().default(50),
+  /** How far out to look for nightlife specifically. Separate from
+   * defaultRadiusMiles because a commuter school draws nightlife from a
+   * wider ring than it draws campus events. */
+  nightlifeRadiusMiles: integer("nightlife_radius_miles").notNull().default(25),
   weeklySchedule: jsonb("weekly_schedule").notNull().default([]).$type<WeeklyScheduleSlot[]>(),
   instagramAccount: text("instagram_account"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Preferred alias for new multi-university code. Same table — `schools`
+ * predates the multi-tenant vocabulary and is kept as the canonical export
+ * so existing queries and `schoolId` foreign keys are untouched.
+ */
+export const universities = schools;
 
 // ── sources ────────────────────────────────────────────────────────
 export const sources = pgTable("sources", {
@@ -66,16 +96,65 @@ export const sources = pgTable("sources", {
     .notNull()
     .references(() => schools.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  /** WHAT this source is (athletics site, venue, watchlist). Descriptive. */
   sourceType: sourceTypeEnum("source_type").notNull(),
+  /** HOW we talk to it. The reusable half — one adapter serves every school
+   * on that platform. Nullable only during migration; the backfill sets it
+   * for every existing row. */
+  adapterType: adapterTypeEnum("adapter_type"),
   category: sourceCategoryEnum("category").notNull(),
   url: text("url"),
+  /** Where crawling *starts*, when that differs from the source's public
+   * home page — an API root, a feed URL, a paginated listing. */
+  discoveryUrl: text("discovery_url"),
   instagramHandle: text("instagram_handle"),
+
+  /** The real-world thing that owns this source (venue, org, promoter).
+   * Several sources can point at one entity — see `entities`/`entitySources`. */
+  entityType: entityTypeEnum("entity_type"),
+  entityId: uuid("entity_id"),
+
+  /** Pin every event from this source to a category (e.g. a nightlife
+   * promoter feed). Formerly `metadata.forceCategory`. */
+  categoryBias: eventCategoryEnum("category_bias"),
+
+  /* ── the three things the old single `priority` column conflated ──
+   * They move independently: a scraped city calendar can be low-trust but
+   * high-frequency; an official athletics feed is high-trust but rarely
+   * needs re-crawling. */
+  /** Whose facts win when two sources disagree during a merge. */
+  trustScore: integer("trust_score").notNull().default(5),
+  /** Queue ordering when more sources are due than we can crawl at once. */
+  crawlPriority: integer("crawl_priority").notNull().default(5),
+  /** Nudge applied to the relevance score of events from this source. */
+  relevanceBias: integer("relevance_bias").notNull().default(0),
+  /** Legacy single-meaning column. Retained so historical rows stay
+   * readable and any un-migrated caller keeps working; new code reads the
+   * three fields above. */
   priority: integer("priority").notNull().default(5),
+
   active: boolean("active").notNull().default(true),
+  crawlIntervalMinutes: integer("crawl_interval_minutes").notNull().default(360),
+  /** Legacy name for crawlIntervalMinutes, kept in sync by the backfill. */
   scrapeFrequencyMinutes: integer("scrape_frequency_minutes").notNull().default(360),
+
+  /* ── scheduling + health telemetry ── */
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   lastSuccessfulCheckAt: timestamp("last_successful_check_at", { withTimezone: true }),
+  /** Last time this source produced an event we hadn't seen. A source that
+   * responds 200 but has stopped yielding is the failure mode that silently
+   * shrinks coverage, so it gets its own column. */
+  lastEventFoundAt: timestamp("last_event_found_at", { withTimezone: true }),
   consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  healthStatus: sourceHealthStatusEnum("health_status").notNull().default("healthy"),
+  /** Human-readable why, for DEGRADED/FAILED. Surfaced on the dashboard so
+   * "blocked by an anti-bot challenge" never reads as "broken code". */
+  healthReason: text("health_reason"),
+
+  /** Everything school-specific an adapter needs: API host, org id, feed
+   * path, page size. Adapters read config; they never name a university. */
+  config: jsonb("config").notNull().default({}).$type<Record<string, unknown>>(),
   metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

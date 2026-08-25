@@ -8,6 +8,13 @@
       "when": 1786923777586,
       "tag": "0000_busy_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787665514219,
+      "tag": "0001_multi_university_foundations",
+      "breakpoints": true
     }
   ]
 }

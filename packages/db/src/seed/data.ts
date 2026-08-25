@@ -1,10 +1,17 @@
-import { parseEventDate, scoreEvent, type EventCategory, type EventStatus } from "@college-events/core";
+import {
+  parseEventDate,
+  scoreEvent,
+  type AdapterType,
+  type EventCategory,
+  type EventStatus,
+} from "@college-events/core";
 
 export const FAU_TZ = "America/New_York";
 
 export const FAU_SCHOOL = {
   name: "Florida Atlantic University",
   shortName: "FAU",
+  primaryDomain: "fau.edu",
   city: "Boca Raton",
   state: "FL",
   latitude: 26.3683,
@@ -46,10 +53,25 @@ export interface SeedSource {
     | "generic_webpage"
     | "manual_submission"
     | "other_api";
+  /** How we talk to the platform. Reusable across universities — the
+   * school-specific parts live in `config`. */
+  adapterType: AdapterType;
   category: "campus" | "nearby" | "instagram_watchlist";
   url?: string;
+  /** Crawl entry point when it differs from the public URL (API root, feed). */
+  discoveryUrl?: string;
   instagramHandle?: string;
+  /** Adapter-specific settings; see each adapter for its shape. */
+  config?: Record<string, unknown>;
+  /** Single legacy number that used to mean trust, queue order and scoring
+   * weight all at once. Still the default for all three below. */
   priority: number;
+  /** Whose facts win a merge. Defaults to `priority`. */
+  trustScore?: number;
+  /** Crawl queue ordering. Defaults to `priority`. */
+  crawlPriority?: number;
+  /** Scoring nudge for events from this source. Defaults to 0. */
+  relevanceBias?: number;
   scrapeFrequencyMinutes?: number;
   /** Defaults to true. Instagram sources are seeded inactive since they need a live
    * PhantomBuster agent to actually produce content — see README's PhantomBuster
@@ -78,27 +100,27 @@ export interface SeedSource {
 // (a one-click re-enable on the Sources page) rather than deleted outright.
 export const FAU_SOURCES: SeedSource[] = [
   // The 3 active sources — do not flip these to active:false.
-  { key: "fau_athletics", name: "FAU Athletics (fausports.com)", sourceType: "athletics", category: "campus", url: "https://fausports.com", priority: 9, scrapeFrequencyMinutes: 240 },
+  { key: "fau_athletics", name: "FAU Athletics (fausports.com)", sourceType: "athletics", adapterType: "sidearm", category: "campus", url: "https://fausports.com", priority: 9, scrapeFrequencyMinutes: 240 },
   // Fed by an external daily scraper (scrape_owlcentral.py, run outside this repo) hitting Owl
   // Central's JSON API and importing via `import-csv ... --source="Owl Central (CSV Import)"` —
   // kept separate from the native ical owl_central source below (which polls the .ics feed
   // directly, and is inactive) since the JSON API carries richer fields and isn't page-capped.
-  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
+  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", adapterType: "manual", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
   // Fed by an external daily scraper (scrape_posh.py, run outside this repo) via
   // `import-csv ... --source="Posh.vip Nightlife"`.
-  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440, forceCategory: "nightlife" },
+  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", adapterType: "posh", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440, forceCategory: "nightlife" },
 
   // Inactive — superseded by the 3 sources above, kept for reference/rollback.
-  { key: "owl_central", name: "Owl Central", sourceType: "owl_central", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240, active: false },
-  { key: "culture_room", name: "Culture Room", sourceType: "venue_website", category: "nearby", url: "https://www.cultureroom.net/", priority: 6, scrapeFrequencyMinutes: 720, active: false },
-  { key: "wharf_ftl", name: "The Wharf Fort Lauderdale", sourceType: "venue_website", category: "nearby", url: "https://wharfftl.com/events/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
-  { key: "revolution_live", name: "Revolution Live", sourceType: "venue_website", category: "nearby", url: "https://www.jointherevolution.net/concerts/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
-  { key: "visit_lauderdale", name: "Visit Lauderdale — Nightlife Guide", sourceType: "generic_webpage", category: "nearby", url: "https://www.visitlauderdale.com/nightlife/", priority: 4, scrapeFrequencyMinutes: 720, active: false },
-  { key: "fau_sg_ig", name: "@fau_sg (Student Government)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fau_sg", priority: 6, scrapeFrequencyMinutes: 180, active: false },
-  { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180, active: false },
-  { key: "sofla_nightlife_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
+  { key: "owl_central", name: "Owl Central", sourceType: "owl_central", adapterType: "campuslabs", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240, active: false },
+  { key: "culture_room", name: "Culture Room", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://www.cultureroom.net/", priority: 6, scrapeFrequencyMinutes: 720, active: false },
+  { key: "wharf_ftl", name: "The Wharf Fort Lauderdale", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://wharfftl.com/events/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
+  { key: "revolution_live", name: "Revolution Live", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://www.jointherevolution.net/concerts/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
+  { key: "visit_lauderdale", name: "Visit Lauderdale — Nightlife Guide", sourceType: "generic_webpage", adapterType: "generic_web", category: "nearby", url: "https://www.visitlauderdale.com/nightlife/", priority: 4, scrapeFrequencyMinutes: 720, active: false },
+  { key: "fau_sg_ig", name: "@fau_sg (Student Government)", sourceType: "instagram", adapterType: "external_social", category: "instagram_watchlist", instagramHandle: "fau_sg", priority: 6, scrapeFrequencyMinutes: 180, active: false },
+  { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", adapterType: "external_social", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180, active: false },
+  { key: "sofla_nightlife_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", adapterType: "external_social", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
   // Utility source manual entries attach to — treated as authoritative since a human verified the details.
-  { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", category: "campus", priority: 8, scrapeFrequencyMinutes: 0, active: false },
+  { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", adapterType: "manual", category: "campus", priority: 8, scrapeFrequencyMinutes: 0, active: false },
 ];
 
 function dt(date: string, startTime: string, endTime?: string) {

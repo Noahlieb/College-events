@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./adapter.js";
 export * from "./ical.js";
 export * from "./rss.js";
 export * from "./jsonld.js";

@@ -29,12 +29,26 @@ async function main() {
         schoolId: school.id,
         name: s.name,
         sourceType: s.sourceType,
+        adapterType: s.adapterType,
         category: s.category,
         url: s.url ?? null,
+        discoveryUrl: s.discoveryUrl ?? null,
         instagramHandle: s.instagramHandle ?? null,
+        // The three successors to the old single `priority`. Seeded from it
+        // unless a source states otherwise, so behaviour is unchanged until
+        // someone deliberately pulls them apart.
         priority: s.priority,
+        trustScore: s.trustScore ?? s.priority,
+        crawlPriority: s.crawlPriority ?? s.priority,
+        relevanceBias: s.relevanceBias ?? 0,
+        categoryBias: s.forceCategory ?? null,
         active: s.active ?? true,
+        // An inactive source is parked, not broken — coverage metrics must
+        // not read it as a failure.
+        healthStatus: (s.active ?? true) ? "healthy" : "disabled",
+        crawlIntervalMinutes: s.scrapeFrequencyMinutes ?? 360,
         scrapeFrequencyMinutes: s.scrapeFrequencyMinutes ?? 360,
+        config: s.config ?? {},
         metadata: s.forceCategory ? { forceCategory: s.forceCategory } : {},
       })
       .returning();
