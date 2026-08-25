@@ -8,6 +8,7 @@ import {
 import { COVERAGE_CATEGORIES, adapterSupport, platformSupported, registeredAdapterTypes } from "@college-events/ingestion";
 import { SOURCE_CATEGORIES, SOURCE_TYPES, ADAPTER_TYPES } from "@college-events/core";
 import { getCurrentSchool, listUniversities } from "@/lib/current-school";
+import { DiscoverSourcesButton } from "@/components/DiscoverSourcesButton";
 import { addSourceAction, toggleSourceActiveAction } from "@/lib/actions";
 import {
   addCandidateUrlAction,
@@ -19,6 +20,14 @@ import {
 } from "@/lib/discovery-actions";
 
 export const dynamic = "force-dynamic";
+// Discovery makes ~75+ sequential external requests (search queries, plus
+// a page fetch per candidate for fingerprinting). Vercel's default
+// function timeout (10s Hobby / 60s Pro) is nowhere near enough; this asks
+// for the platform maximum. Even that may not be sufficient for a large
+// university's query set — see DiscoverSourcesButton for what happens if
+// it still times out, and `pnpm worker discover <school>` for a run with
+// no time limit at all.
+export const maxDuration = 300;
 
 const HEALTH_BADGE: Record<string, string> = {
   healthy: "badge-green",
@@ -108,11 +117,9 @@ export default async function SourcesPage() {
             Switch
           </button>
         </form>
-        <form action={discoverSourcesAction} style={{ marginLeft: "auto" }}>
-          <button className="btn btn-primary" type="submit">
-            Discover sources
-          </button>
-        </form>
+        <div style={{ marginLeft: "auto" }}>
+          <DiscoverSourcesButton action={discoverSourcesAction} />
+        </div>
       </div>
       <p className="subtitle">
         {sourceRows.length} sources for {school.shortName}. Adding a source — or a university — is a data
