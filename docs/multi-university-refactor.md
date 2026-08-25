@@ -69,6 +69,50 @@ Baseline to preserve: **168 tests / 22 files green.**
 - **Stage 7 — Coverage & onboarding.** Coverage metrics incl. discovery miss
   rate; Sources dashboard sections; Add University flow.
 
+## What shipped
+
+All seven stages landed. Test count went 168 → 380 across the same suites.
+
+| Stage | What it changed |
+|---|---|
+| 1 | `adapter_type` split from `source_type`; `priority` decomposed into `trust_score` / `crawl_priority` / `relevance_bias`; health enum with DEGRADED; university fields; every FAU source migrated |
+| 2 | `campuslabs` + `posh` adapters; shared ingestion service; CSV demoted to an operator tool; workflow drops Python |
+| 3 | `entities` + `entity_sources` with primary/secondary roles; conservative entity resolution |
+| 4 | Platform fingerprinting with evidence; `source_discovery_candidates`; `UniversitySourceDiscoveryService` over a pluggable provider |
+| 5 | `asset_candidates` at canonical-event level; official-beats-generated in one tested function |
+| 6 | `crawl_jobs` / `source_runs`; scheduler over `next_run_at`; failure isolation as a pure, tested function |
+| 7 | Coverage metrics incl. discovery miss rate; Sources dashboard sections; Add University flow |
+
+### Adding a university now
+
+1. **Universities → Add university.** Name, short name, domain, city, state, coordinates, timezone.
+2. **Sources → Discover sources.** Generates the query set from that record, fingerprints
+   results, writes candidates. With no search provider configured this finds nothing — by design.
+3. **Review candidates.** Each carries its detected adapter, a confidence, and the evidence.
+4. **Approve.** A candidate becomes a source with `next_run_at = null`, so it is due immediately.
+5. **`pnpm worker crawl <school>`.** The scheduler queues it alongside everything else.
+
+No step involves writing code.
+
+### Known gaps
+
+Real and deliberate, not oversights:
+
+- **Adapters exist for `campuslabs`, `posh`, `sidearm`, `ical`, `rss`, `jsonld`/`generic_web`.**
+  `campusgroups`, `localist`, `25live`, `eventbrite`, `luma`, `partiful`, `tixr` and
+  `ticketmaster` are *fingerprinted but not yet crawlable* — `adapterFor()` returns null and the
+  source reports `no_adapter` rather than failing. Each is now a self-contained addition.
+- **No real `WebDiscoveryProvider` is wired in.** The interface and a fixture provider exist;
+  nothing paid is hardcoded, and the null provider returns nothing rather than throwing.
+- **The discovery miss rate has no probe behind it yet.** It counts candidates whose
+  `discovery_method` is `discovery_miss`, and nothing writes that value — it needs a job
+  comparing discovered events against what registered sources reported. The metric returns
+  `null` ("unmeasured") rather than a falsely clean 0%.
+- **`external_social` has no push endpoint yet.** The source type, adapter slot and registry
+  representation exist; the authenticated ingestion endpoint does not.
+- **Perceptual hashing has a column but no implementation**, so the same flyer arriving from two
+  sources is two candidates rather than one recognised image.
+
 ## Non-goals / constraints
 
 - No CAPTCHA, Cloudflare, or auth bypass. Posh becomes a **degraded-capable**
