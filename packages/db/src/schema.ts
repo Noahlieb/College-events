@@ -374,6 +374,14 @@ export const events = pgTable("events", {
   verificationStatus: verificationStatusEnum("verification_status").notNull().default("needs_review"),
   status: eventStatusEnum("status").notNull().default("candidate"),
   flags: jsonb("flags").notNull().default([]).$type<string[]>(),
+  /** How far asset discovery has got for this event. Explicit because the
+   * artwork generator must not run until every linked source has been
+   * asked — "no image yet" and "no image anywhere" are different facts,
+   * and generating on the first is the bug this pipeline exists to stop. */
+  assetDiscoveryStatus: text("asset_discovery_status").notNull().default("pending"),
+  assetDiscoveryCompletedAt: timestamp("asset_discovery_completed_at", { withTimezone: true }),
+  /** Why the current selection won, in words, for the review UI. */
+  selectedAssetReason: text("selected_asset_reason"),
   /** The winning asset among every candidate from every linked source.
    * Nullable: an event with no artwork anywhere renders a generated
    * placeholder, which is deliberately *not* stored as a candidate so it
@@ -504,6 +512,9 @@ export const assetCandidates = pgTable(
      * recognised as one image rather than three, and lets a higher-res copy
      * be spotted as the *same* artwork rather than a different one. */
     perceptualHash: text("perceptual_hash"),
+    /** Encoded file size. The last tie-breaker between copies of identical
+     * dimensions — the larger file is the less-compressed one. */
+    bytes: integer("bytes"),
 
     classification: assetClassificationEnum("classification").notNull().default("unknown"),
     /** True only when the offering source is authoritative for this event. */

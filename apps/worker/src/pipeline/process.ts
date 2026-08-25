@@ -21,9 +21,14 @@ import {
   homeAwayForSportsEvent,
 } from "@college-events/core";
 import { createAIProvider, type AIProvider } from "@college-events/ai";
+import type { AssetCandidate } from "@college-events/ingestion";
 import { estimateDistanceMiles, isCampusAffiliated } from "../lib/geo-heuristic.js";
 import { log } from "../lib/log.js";
-import { recordObservationImage } from "./event-assets.js";
+import {
+  ingestAssetOffers,
+  markAssetDiscoveryComplete,
+  recordObservationImage,
+} from "./event-assets.js";
 
 export interface ProcessSummary {
   inspected: number;
@@ -35,6 +40,23 @@ export interface ProcessSummary {
 }
 
 const DEDUP_WINDOW_HOURS = 30;
+
+/**
+ * Pulls the adapter's asset offers back off the observation.
+ *
+ * They ride on raw_metadata because at ingest time there was no canonical
+ * event to attach them to — the observation is the only thing that exists
+ * that early, and it is also the honest owner of "this source offered
+ * these images".
+ */
+function assetOffersFrom(rawMetadata: unknown): AssetCandidate[] {
+  const offers = (rawMetadata as { assetOffers?: unknown } | null)?.assetOffers;
+  if (!Array.isArray(offers)) return [];
+  return offers.filter(
+    (o): o is AssetCandidate =>
+      typeof o === "object" && o !== null && typeof (o as AssetCandidate).sourceUrl === "string",
+  );
+}
 
 /**
  * Runs the AI extraction → normalization → dedup → scoring pipeline (spec
@@ -188,6 +210,7 @@ export async function processSchoolRawContent(
           extracted,
           parsedStartAt: parsedDates.startAt,
           mediaUrl: raw.mediaUrl,
+          assetOffers: assetOffersFrom(raw.rawMetadata),
         });
         await db
           .update(rawContent)
@@ -264,6 +287,17 @@ export async function processSchoolRawContent(
         rawContentId: raw.id,
         mediaUrl: raw.mediaUrl,
       });
+      // Everything the adapter offered, not just the one image the
+      // observation carried — an adapter that read the event's page may
+      // have found a poster the listing never mentioned.
+      await ingestAssetOffers({
+        schoolId,
+        eventId: event.id,
+        sourceId: source.id,
+        rawContentId: raw.id,
+        offers: assetOffersFrom(raw.rawMetadata),
+      });
+      await markAssetDiscoveryComplete(event.id);
 
       await db
         .update(rawContent)
@@ -341,6 +375,8 @@ interface MergeArgs {
   rawContentId: string;
   /** Image this observation carried, offered as an asset candidate. */
   mediaUrl?: string | null;
+  /** Everything the adapter offered for this observation. */
+  assetOffers?: AssetCandidate[];
   source: typeof sources.$inferSelect;
   extracted: {
     event_name: string | null;
@@ -383,6 +419,16 @@ async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
     rawContentId,
     mediaUrl: args.mediaUrl ?? null,
   });
+  await ingestAssetOffers({
+    schoolId,
+    eventId: existingEventId,
+    sourceId: source.id,
+    rawContentId,
+    offers: args.assetOffers ?? [],
+  });
+  // Re-running selection here is what lets a duplicate found days later
+  // upgrade an event's artwork.
+  await markAssetDiscoveryComplete(existingEventId);
 
   const links = await db
     .select({ sourcePriority: sources.priority, sourceId: sources.id, rawMetadata: rawContent.rawMetadata })

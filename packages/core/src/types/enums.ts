@@ -79,7 +79,13 @@ export type DiscoveryCandidateStatus = (typeof DISCOVERY_CANDIDATE_STATUSES)[num
 export const ASSET_CLASSIFICATIONS = [
   "flyer", // purpose-made promotional art for this event
   "event_art", // official imagery for the event, not a flyer per se
-  "photo", // a photograph associated with the event
+  /** A picture of the room, not of the event. Real, useful as a last
+   * resort before generating, but it says nothing about *this* night. */
+  "venue_photo",
+  /** A platform's default share card, a stock header, an org banner —
+   * imagery attached to the page rather than to the event. */
+  "generic_social_image",
+  "photo", // legacy: pre-dates the venue/social split
   "logo", // organization/venue branding — never event-specific
   "generated", // produced by us when nothing official exists
   "unknown",

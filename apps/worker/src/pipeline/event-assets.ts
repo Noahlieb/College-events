@@ -7,6 +7,7 @@ import {
   type AssetClassification,
 } from "@college-events/core";
 import type { AssetCandidate } from "@college-events/ingestion";
+import { inspectImage, type ImageFacts } from "@college-events/render";
 
 /**
  * Flyer selection for a canonical event, across every source that reported
@@ -31,13 +32,24 @@ type AssetRow = typeof assetCandidates.$inferSelect;
  * logo however official it is.
  */
 export function classifyCandidate(candidate: AssetCandidate): AssetClassification {
-  if (candidate.origin === "organizer" && !candidate.isOfficial) return "logo";
-  if (candidate.origin === "venue" && !candidate.isOfficial) return "logo";
-  if (!candidate.isOfficial) return "photo";
+  // An organization's or venue's own avatar is branding, not event art —
+  // otherwise every club meeting would "have a flyer" that is really the
+  // club's badge.
+  if (candidate.origin === "organizer" || candidate.origin === "venue") {
+    return candidate.isOfficial ? "venue_photo" : "logo";
+  }
+  if (!candidate.isOfficial) return "generic_social_image";
+
+  // An image attached to the event's own record, by whoever published the
+  // event, is the flyer.
   if (candidate.origin === "api" || candidate.origin === "jsonld" || candidate.origin === "poster") {
     return "flyer";
   }
-  if (candidate.origin === "hero" || candidate.origin === "opengraph") return "event_art";
+  // A page hero or link-preview card is official imagery for the page,
+  // which is a weaker claim than imagery attached to the event.
+  if (candidate.origin === "hero") return "event_art";
+  if (candidate.origin === "opengraph") return "generic_social_image";
+  if (candidate.origin === "linked") return "event_art";
   return "unknown";
 }
 
@@ -254,4 +266,103 @@ export async function recordObservationImage(args: {
     .onConflictDoNothing({ target: [assetCandidates.eventId, assetCandidates.sourceUrl] });
 
   await refreshCanonicalAsset(args.eventId);
+}
+
+/**
+ * Replays every asset offer an observation carried into the canonical
+ * event's candidate pool, hashing each image so copies of one flyer are
+ * recognised as copies.
+ *
+ * This is the piece that makes the flyer pipeline actually aggregate.
+ * Before it, an event's artwork was whatever single `mediaUrl` its first
+ * reporting source happened to have; adapters implemented `discoverAssets`
+ * and nothing ever called it.
+ */
+export async function ingestAssetOffers(args: {
+  schoolId: string;
+  eventId: string;
+  sourceId: string;
+  rawContentId: string;
+  offers: AssetCandidate[];
+  fetchImage?: (url: string) => Promise<Buffer | null>;
+}): Promise<number> {
+  if (args.offers.length === 0) return 0;
+  const fetchImage = args.fetchImage ?? defaultFetchImage;
+  let stored = 0;
+
+  for (const offer of args.offers) {
+    // Hashing needs the bytes. A candidate we cannot download is still
+    // worth recording — it simply cannot be grouped with others, and a
+    // hashless candidate is better than a missing one.
+    let facts: ImageFacts | null = null;
+    const bytes = await fetchImage(offer.sourceUrl);
+    if (bytes) {
+      try {
+        facts = await inspectImage(bytes);
+      } catch {
+        facts = null;
+      }
+    }
+
+    const inserted = await db
+      .insert(assetCandidates)
+      .values({
+        schoolId: args.schoolId,
+        eventId: args.eventId,
+        sourceId: args.sourceId,
+        rawContentId: args.rawContentId,
+        sourceUrl: offer.sourceUrl,
+        width: facts?.width ?? offer.width ?? null,
+        height: facts?.height ?? offer.height ?? null,
+        mime: facts?.mime ?? offer.mime ?? null,
+        bytes: facts?.bytes ?? null,
+        perceptualHash: facts?.perceptualHash ?? null,
+        classification: classifyCandidate(offer),
+        isOfficial: offer.isOfficial,
+        isAiGenerated: false,
+        confidence: offer.confidence,
+        origin: offer.origin,
+      })
+      .onConflictDoNothing({ target: [assetCandidates.eventId, assetCandidates.sourceUrl] })
+      .returning({ id: assetCandidates.id });
+
+    if (inserted.length > 0) stored++;
+  }
+
+  return stored;
+}
+
+/** Downloads an image, with a cap so one huge file cannot stall a batch. */
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+
+async function defaultFetchImage(url: string): Promise<Buffer | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_IMAGE_BYTES) return null;
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return buffer.byteLength > MAX_IMAGE_BYTES ? null : buffer;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Marks an event's asset discovery finished.
+ *
+ * The generator checks this before it is allowed to run: "no image yet"
+ * and "no image anywhere" are different facts, and generating on the first
+ * is precisely the bug this pipeline exists to prevent.
+ */
+export async function markAssetDiscoveryComplete(eventId: string): Promise<void> {
+  await db
+    .update(events)
+    .set({ assetDiscoveryStatus: "complete", assetDiscoveryCompletedAt: new Date() })
+    .where(eq(events.id, eventId));
 }

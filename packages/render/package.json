@@ -12,6 +12,7 @@
     "generate-glyphs": "node scripts/extract-glyphs.mjs"
   },
   "dependencies": {
+    "@college-events/core": "workspace:*",
     "sharp": "^0.33.5"
   },
   "devDependencies": {

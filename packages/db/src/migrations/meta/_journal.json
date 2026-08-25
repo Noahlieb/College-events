@@ -50,6 +50,13 @@
       "when": 1787667657761,
       "tag": "0006_crawl_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787670282195,
+      "tag": "0007_asset_aggregation",
+      "breakpoints": true
     }
   ]
 }

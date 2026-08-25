@@ -4,8 +4,10 @@ import {
   SourceAccessDeniedError,
   adapterFor,
   adapterForSourceType,
+  type AssetCandidate,
   type CrawlContext,
   type DiscoveredEvent,
+  type EventSourceAdapter,
   type SourceInstance,
 } from "@college-events/ingestion";
 import {
@@ -73,10 +75,43 @@ export function toSourceInstance(source: SourceRow): SourceInstance {
   };
 }
 
+/**
+ * Asks the adapter what artwork it can offer for each item, and stores the
+ * answer on the raw_content row.
+ *
+ * Deferred rather than resolved here because asset candidates belong to a
+ * *canonical event*, which does not exist yet — processing has not run.
+ * Carrying them on the observation keeps the provenance exact: this
+ * source, in this observation, offered these images.
+ *
+ * Never fails an ingest. Failing to find a better picture must not cost us
+ * the event.
+ */
+async function collectAssetOffers(
+  adapter: EventSourceAdapter | null,
+  instance: SourceInstance,
+  items: DiscoveredEvent[],
+  context: CrawlContext,
+): Promise<Map<string, AssetCandidate[]>> {
+  const offers = new Map<string, AssetCandidate[]>();
+  if (!adapter?.capabilities.assets || !adapter.discoverAssets) return offers;
+
+  for (const item of items) {
+    try {
+      const candidates = await adapter.discoverAssets(instance, item, context);
+      if (candidates.length > 0) offers.set(item.externalId, candidates);
+    } catch {
+      // Best-effort by design.
+    }
+  }
+  return offers;
+}
+
 async function persistItems(
   schoolId: string,
   sourceId: string,
   items: DiscoveredEvent[],
+  assetOffers: Map<string, AssetCandidate[]> = new Map(),
 ): Promise<{ discovered: number; duplicatesSkipped: number }> {
   let discovered = 0;
   let duplicatesSkipped = 0;
@@ -93,7 +128,14 @@ async function persistItems(
         mediaUrl: item.mediaUrl,
         publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
         processingStatus: "pending",
-        rawMetadata: item.rawMetadata ?? {},
+        rawMetadata: {
+          ...(item.rawMetadata ?? {}),
+          // Replayed into asset_candidates once this observation resolves
+          // to a canonical event.
+          ...(assetOffers.has(item.externalId)
+            ? { assetOffers: assetOffers.get(item.externalId) }
+            : {}),
+        },
       })
       .onConflictDoNothing({ target: [rawContent.sourceId, rawContent.externalId] })
       .returning({ id: rawContent.id });
@@ -166,7 +208,13 @@ export async function runSource(
           fetchImpl: context.fetchImpl,
         });
 
-    const { discovered, duplicatesSkipped } = await persistItems(source.schoolId, source.id, items);
+    const assetOffers = await collectAssetOffers(adapter, instance, items, context);
+    const { discovered, duplicatesSkipped } = await persistItems(
+      source.schoolId,
+      source.id,
+      items,
+      assetOffers,
+    );
     const health = evaluateSourceHealth({
       itemsSeen: items.length,
       discovered,

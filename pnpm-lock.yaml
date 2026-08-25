@@ -216,6 +216,9 @@ importers:
 
   packages/render:
     dependencies:
+      '@college-events/core':
+        specifier: workspace:*
+        version: link:../core
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
