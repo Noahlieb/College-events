@@ -13,6 +13,14 @@ interface CsvImportSummary {
   submitErrors: { rowNumber: number; eventName: string; reason: string }[];
   routingErrors: { rowNumber: number; university: string; reason: string }[];
   bySchool: { schoolId: string; schoolShortName: string; created: number; merged: number }[];
+  /** How many more of each error type exist beyond what's listed — the
+   * redirect URL can only carry so much detail before hitting the
+   * platform's URL length limit, so a large CSV's error list is capped
+   * server-side (see toUrlSafeSummary in lib/actions.ts). Counts above are
+   * always exact; only these lists are ever shortened. */
+  parseErrorsTruncated?: number;
+  submitErrorsTruncated?: number;
+  routingErrorsTruncated?: number;
 }
 
 export default async function ImportPage({
@@ -116,6 +124,14 @@ export default async function ImportPage({
                   </span>
                 ))}
               </div>
+              {(summary.parseErrorsTruncated || summary.submitErrorsTruncated || summary.routingErrorsTruncated) ? (
+                <p style={{ marginTop: 10, marginBottom: 0, fontSize: 13, color: "var(--muted)" }}>
+                  +{(summary.parseErrorsTruncated ?? 0) + (summary.submitErrorsTruncated ?? 0) + (summary.routingErrorsTruncated ?? 0)}{" "}
+                  more skipped rows not shown here — the counts above are exact, this list is just capped so the
+                  page can load. For the rest of the reasons, run the same file through{" "}
+                  <code>pnpm worker import-csv &lt;school&gt; &lt;file&gt;</code> instead, which prints every row.
+                </p>
+              ) : null}
             </div>
           )}
         </div>

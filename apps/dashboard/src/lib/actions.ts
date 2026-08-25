@@ -195,5 +195,69 @@ export async function importCsvAction(formData: FormData) {
 
   revalidatePath("/events");
   revalidatePath("/");
-  redirect("/import?result=" + encodeURIComponent(JSON.stringify(summary)));
+  redirect("/import?result=" + encodeURIComponent(JSON.stringify(toUrlSafeSummary(summary))));
+}
+
+/** How much of the encoded redirect URL this result is allowed to occupy.
+ * Comfortably under every platform's actual limit (commonly ~8–16KB), with
+ * room left for the path and the rest of the query string. */
+const URL_RESULT_BUDGET_CHARS = 6000;
+
+type CsvImportSummary = Awaited<ReturnType<typeof importCsvEvents>>;
+type UrlSafeCsvImportSummary = CsvImportSummary & {
+  parseErrorsTruncated: number;
+  submitErrorsTruncated: number;
+  routingErrorsTruncated: number;
+};
+
+/**
+ * Shrinks a CSV import result until it's safe to put in a redirect URL.
+ *
+ * The naive version — JSON.stringify the whole thing — works for a handful
+ * of errors and breaks silently for a real one: a CSV where most rows fail
+ * produces dozens of error entries, event titles in the wild are full of
+ * emoji, and encodeURIComponent can expand a single emoji into a dozen
+ * characters. That combination blew a real UCF import past the platform's
+ * URL length limit, turning "here's what went wrong on each row" into a
+ * blank URI_TOO_LONG page — worse than not having the detail at all.
+ *
+ * Counts (created/merged/totalRows) are always exact; only the per-row
+ * error *lists* shrink, in three steps: fewer entries, then shorter text
+ * per entry, then — if a file is bad enough that even that doesn't fit —
+ * the lists empty out entirely and only the *counts* of what went wrong
+ * survive. A result is never dropped outright; it just says less.
+ */
+function toUrlSafeSummary(summary: CsvImportSummary): UrlSafeCsvImportSummary {
+  const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+  const build = (maxEntries: number, maxCharsPerField: number): UrlSafeCsvImportSummary => ({
+    ...summary,
+    parseErrors: summary.parseErrors
+      .slice(0, maxEntries)
+      .map((e) => ({ ...e, reason: truncate(e.reason, maxCharsPerField) })),
+    parseErrorsTruncated: Math.max(0, summary.parseErrors.length - maxEntries),
+    submitErrors: summary.submitErrors
+      .slice(0, maxEntries)
+      .map((e) => ({ ...e, eventName: truncate(e.eventName, 60), reason: truncate(e.reason, maxCharsPerField) })),
+    submitErrorsTruncated: Math.max(0, summary.submitErrors.length - maxEntries),
+    routingErrors: summary.routingErrors
+      .slice(0, maxEntries)
+      .map((e) => ({ ...e, university: truncate(e.university, 60), reason: truncate(e.reason, maxCharsPerField) })),
+    routingErrorsTruncated: Math.max(0, summary.routingErrors.length - maxEntries),
+  });
+
+  const fits = (candidate: UrlSafeCsvImportSummary) =>
+    encodeURIComponent(JSON.stringify(candidate)).length <= URL_RESULT_BUDGET_CHARS;
+
+  for (const [maxEntries, maxChars] of [
+    [15, 150],
+    [5, 100],
+  ] as const) {
+    const candidate = build(maxEntries, maxChars);
+    if (fits(candidate)) return candidate;
+  }
+
+  // Even five short entries didn't fit — drop the lists entirely and keep
+  // only the counts, which is always small.
+  return { ...build(0, 0) };
 }
