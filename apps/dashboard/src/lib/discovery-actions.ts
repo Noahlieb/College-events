@@ -4,14 +4,16 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db, schools, sourceDiscoveryCandidates, sources } from "@college-events/db";
-import {
-  COVERAGE_CATEGORIES,
-  UniversitySourceDiscoveryService,
-  createDiscoveryProvider,
-  fingerprintUrl,
-} from "@college-events/ingestion";
+import { COVERAGE_CATEGORIES, fingerprintUrl } from "@college-events/ingestion";
 import type { AdapterType } from "@college-events/core";
 import { getCurrentSchool, SCHOOL_COOKIE } from "./current-school";
+// Deep import, not the @college-events/worker barrel — see the comment on
+// the equivalent imports in actions.ts. The barrel's index.ts re-exports
+// render.ts alongside everything else, and since it's evaluated as one
+// CommonJS unit at runtime, importing anything through it pulls in
+// render.ts's sharp dependency too — a native binary Next.js cannot
+// bundle into a serverless function.
+import { discoverUniversitySources } from "@college-events/worker/dist/pipeline/discover.js";
 
 /** Switch which university the dashboard is showing. */
 export async function selectUniversityAction(formData: FormData) {
@@ -74,65 +76,21 @@ export async function addUniversityAction(formData: FormData) {
  * is the correct behaviour — discovery is a safety net over a registry
  * that already works, and no paid provider is wired in by default.
  */
-export async function discoverSourcesAction() {
+/**
+ * Runs discovery for the currently-selected university via the shared
+ * `discoverUniversitySources` pipeline function — the exact same code path
+ * `pnpm worker discover <school>` uses, so the two can never drift apart.
+ *
+ * That sharing is also what makes this safe to call from a serverless
+ * function with a hard time limit: candidates are persisted the moment
+ * each is found (see `onCandidate` in the discovery service), not batched
+ * until the whole run finishes. A request that gets cut off partway
+ * through — a platform timeout, a dropped connection — still keeps
+ * everything found up to that point instead of losing the whole run.
+ */
+export async function discoverSourcesAction(): Promise<void> {
   const school = await getCurrentSchool();
-
-  const known = await db
-    .select({ url: sources.url, discoveryUrl: sources.discoveryUrl })
-    .from(sources)
-    .where(eq(sources.schoolId, school.id));
-
-  // Which index answers is a deployment concern, read from the
-  // environment here and never sent to the browser. With nothing
-  // configured this is the null provider and the run finds nothing —
-  // which is a legible outcome, not a failure.
-  const service = new UniversitySourceDiscoveryService(createDiscoveryProvider());
-  const summary = await service.discover(
-    {
-      name: school.name,
-      shortName: school.shortName,
-      primaryDomain: school.primaryDomain,
-      city: school.city,
-      state: school.state,
-    },
-    {
-      knownUrls: known.flatMap((s) => [s.url, s.discoveryUrl].filter((u): u is string => !!u)),
-      // Fetch each candidate so fingerprinting sees the real page. Slower,
-      // but a platform identified from markup is worth far more to a
-      // reviewer than one guessed from a URL — and this runs rarely.
-      fetchPages: true,
-    },
-  );
-
-  for (const candidate of summary.candidates) {
-    await db
-      .insert(sourceDiscoveryCandidates)
-      .values({
-        schoolId: school.id,
-        name: candidate.name,
-        url: candidate.url,
-        detectedAdapter: candidate.detectedAdapter,
-        detectedEntityType: candidate.detectedEntityType,
-        confidence: candidate.confidence,
-        evidence: candidate.evidence,
-        discoveryMethod: candidate.discoveryMethod,
-        coverageCategory: candidate.coverageCategory,
-        status: "pending",
-      })
-      // Re-running discovery refreshes what a candidate looks like rather
-      // than stacking duplicates for a reviewer to wade through — and a
-      // candidate already rejected stays rejected.
-      .onConflictDoUpdate({
-        target: [sourceDiscoveryCandidates.schoolId, sourceDiscoveryCandidates.url],
-        set: {
-          confidence: candidate.confidence,
-          evidence: candidate.evidence,
-          detectedAdapter: candidate.detectedAdapter,
-        },
-        setWhere: eq(sourceDiscoveryCandidates.status, "pending"),
-      });
-  }
-
+  await discoverUniversitySources(school.id, { fetchPages: true });
   revalidatePath("/sources");
 }
 

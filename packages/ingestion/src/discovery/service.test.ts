@@ -271,3 +271,73 @@ describe("UniversitySourceDiscoveryService", () => {
     expect(summary.candidates[0]!.detectedAdapter).toBe("localist");
   });
 });
+
+describe("UniversitySourceDiscoveryService — onCandidate (incremental persistence)", () => {
+  it("fires once per candidate, before discover() returns", async () => {
+    // The whole point: a caller with a hard time limit (a serverless
+    // function backing the dashboard button) can persist here and keep
+    // whatever was found even if the run never reaches its own return.
+    const provider = new FixtureDiscoveryProvider({
+      "site:ucf.edu events": [{ title: "Events", url: "https://events.ucf.edu/" }],
+      "site:ucf.edu athletics schedule": [{ title: "Knights", url: "https://ucfknights.com/calendar" }],
+    });
+
+    const seen: string[] = [];
+    const summary = await new UniversitySourceDiscoveryService(provider).discover(UCF, {
+      onCandidate: (c) => {
+        seen.push(c.url);
+      },
+    });
+
+    expect(seen.sort()).toEqual(summary.candidates.map((c) => c.url).sort());
+  });
+
+  it("has written every candidate to the callback even if the caller throws afterward", async () => {
+    // Simulates the exact failure mode this exists for: the request gets
+    // cut off partway through discover(). Everything the callback already
+    // saw is real work already done — it does not depend on discover()
+    // returning normally.
+    const provider = new FixtureDiscoveryProvider({
+      "site:ucf.edu events": [{ title: "Events", url: "https://events.ucf.edu/" }],
+    });
+
+    const persisted: string[] = [];
+    await new UniversitySourceDiscoveryService(provider)
+      .discover(UCF, {
+        onCandidate: (c) => {
+          persisted.push(c.url);
+        },
+      })
+      .catch(() => undefined);
+
+    expect(persisted).toContain("https://events.ucf.edu");
+  });
+
+  it("does not let a failing callback abort the rest of the search", async () => {
+    const provider = new FixtureDiscoveryProvider({
+      "site:ucf.edu events": [{ title: "Events", url: "https://events.ucf.edu/" }],
+      "site:ucf.edu athletics schedule": [{ title: "Knights", url: "https://ucfknights.com/calendar" }],
+    });
+
+    let calls = 0;
+    const summary = await new UniversitySourceDiscoveryService(provider).discover(UCF, {
+      onCandidate: () => {
+        calls++;
+        throw new Error("simulated write failure");
+      },
+    });
+
+    expect(calls).toBe(summary.candidates.length);
+    expect(summary.candidates.length).toBeGreaterThan(1);
+  });
+
+  it("still returns the full summary normally when no callback is given", async () => {
+    // Backward compatible: every existing caller that doesn't pass
+    // onCandidate behaves exactly as before.
+    const provider = new FixtureDiscoveryProvider({
+      "site:ucf.edu events": [{ title: "Events", url: "https://events.ucf.edu/" }],
+    });
+    const summary = await new UniversitySourceDiscoveryService(provider).discover(UCF);
+    expect(summary.candidates.length).toBeGreaterThan(0);
+  });
+});

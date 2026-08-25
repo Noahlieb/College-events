@@ -50,6 +50,23 @@ export interface DiscoveryOptions {
   /** URLs already registered as sources — skipped rather than re-proposed. */
   knownUrls?: Iterable<string>;
   signal?: AbortSignal;
+  /**
+   * Fired the moment each candidate is finalized, before `discover()`
+   * returns the full summary.
+   *
+   * A full run makes dozens of sequential external requests and can take
+   * minutes — long enough that a caller running inside a time-boxed
+   * environment (a serverless function with a hard duration limit) may
+   * have its connection cut before `discover()` ever returns. Without
+   * this, a run killed at candidate 40 of 50 loses all 40, because nothing
+   * was persisted until the very end. A caller that persists here instead
+   * keeps whatever was found up to the cutoff.
+   *
+   * Errors thrown here are swallowed rather than aborting the run — a
+   * failure to persist one candidate should not cost the rest of the
+   * search.
+   */
+  onCandidate?: (candidate: DiscoveredSourceCandidate) => void | Promise<void>;
 }
 
 /** Normalized form used to tell "already known" from "new". */
@@ -297,6 +314,14 @@ export class UniversitySourceDiscoveryService {
     };
 
     byUrl.set(canonical, candidate);
+    if (opts.onCandidate) {
+      try {
+        await opts.onCandidate(candidate);
+      } catch {
+        // See the doc comment on `onCandidate`: one bad write must not
+        // abort a search that has more candidates left to find.
+      }
+    }
     return candidate;
   }
 }
