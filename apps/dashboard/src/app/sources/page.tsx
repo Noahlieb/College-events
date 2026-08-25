@@ -317,6 +317,7 @@ export default async function SourcesPage() {
               <th>Entity</th>
               <th>Adapter status</th>
               <th>Trust / Crawl</th>
+              <th>Next crawl</th>
               <th>Last crawl</th>
               <th>Last event</th>
               <th>Health</th>
@@ -355,6 +356,18 @@ export default async function SourcesPage() {
                 </td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   {s.trustScore} / {s.crawlPriority}
+                </td>
+                <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>
+                  {/* This is the direct answer to "did clicking Run now do
+                      anything" — a null next_run_at (or one in the past)
+                      means the source is queued for the very next crawl,
+                      which is the only thing that button actually changes.
+                      It does not crawl anything itself. */}
+                  {!s.nextRunAt || s.nextRunAt.getTime() <= Date.now() ? (
+                    <span className="badge badge-blue">Due now</span>
+                  ) : (
+                    `in ${Math.round((s.nextRunAt.getTime() - Date.now()) / 60000)}m`
+                  )}
                 </td>
                 <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{ago(s.lastCheckedAt)}</td>
                 <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{ago(s.lastEventFoundAt)}</td>
