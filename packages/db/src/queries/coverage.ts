@@ -1,0 +1,158 @@
+import { and, count, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { db } from "../client.js";
+import {
+  assetCandidates,
+  entities,
+  entitySources,
+  events,
+  sourceDiscoveryCandidates,
+  sources,
+} from "../schema.js";
+import { computeCoverage, type CoverageInput, type CoverageReport } from "@college-events/core";
+
+/**
+ * Gathers the observable coverage of one university.
+ *
+ * Lives in the db package because both the dashboard and the worker CLI
+ * need exactly these numbers, and two implementations of "how many venues
+ * are we monitoring" would drift apart within a month.
+ */
+export async function gatherCoverage(
+  schoolId: string,
+  expectedCategories: string[],
+  options: { since?: Date } = {},
+): Promise<CoverageReport> {
+  const since = options.since ?? new Date(Date.now() - 30 * 86_400_000);
+
+  const [sourceRows, entityRows, linkedEntityRows, eventRows, flyerRows, candidateRows] =
+    await Promise.all([
+      db
+        .select({ healthStatus: sources.healthStatus, active: sources.active })
+        .from(sources)
+        .where(eq(sources.schoolId, schoolId)),
+
+      db
+        .select({ entityType: entities.entityType, id: entities.id })
+        .from(entities)
+        .where(eq(entities.schoolId, schoolId)),
+
+      // Entities that actually have a feed, as opposed to being known to
+      // exist. The gap between the two is the interesting number: an
+      // organization we know about but cannot hear from contributes
+      // nothing to the calendar.
+      db
+        .selectDistinct({ entityId: entitySources.entityId, entityType: entities.entityType })
+        .from(entitySources)
+        .innerJoin(entities, eq(entitySources.entityId, entities.id))
+        .innerJoin(sources, eq(entitySources.sourceId, sources.id))
+        .where(and(eq(entities.schoolId, schoolId), eq(sources.active, true))),
+
+      db
+        .select({ total: count() })
+        .from(events)
+        .where(and(eq(events.schoolId, schoolId), gte(events.createdAt, since))),
+
+      // "Real flyer" means the chosen asset is one a source published, not
+      // one we generated. An event with no canonical asset is rendering a
+      // placeholder by definition.
+      db
+        .select({ total: count() })
+        .from(events)
+        .innerJoin(assetCandidates, eq(events.canonicalAssetId, assetCandidates.id))
+        .where(
+          and(
+            eq(events.schoolId, schoolId),
+            gte(events.createdAt, since),
+            eq(assetCandidates.isAiGenerated, false),
+          ),
+        ),
+
+      db
+        .select({ status: sourceDiscoveryCandidates.status, method: sourceDiscoveryCandidates.discoveryMethod })
+        .from(sourceDiscoveryCandidates)
+        .where(eq(sourceDiscoveryCandidates.schoolId, schoolId)),
+    ]);
+
+  const coveredCategories = await db
+    .selectDistinct({ category: sourceDiscoveryCandidates.coverageCategory })
+    .from(sourceDiscoveryCandidates)
+    .where(
+      and(
+        eq(sourceDiscoveryCandidates.schoolId, schoolId),
+        isNotNull(sourceDiscoveryCandidates.promotedSourceId),
+        isNotNull(sourceDiscoveryCandidates.coverageCategory),
+      ),
+    );
+
+  const activeSources = sourceRows.filter((s) => s.active);
+  const linkedIds = new Set(linkedEntityRows.map((r) => r.entityId));
+
+  const orgs = entityRows.filter((e) => e.entityType === "organization");
+  const venues = entityRows.filter((e) => e.entityType === "venue");
+
+  // A discovery "miss" is a candidate that surfaced because an independent
+  // pass found events no registered source had reported.
+  const misses = candidateRows.filter((c) => c.method === "discovery_miss");
+
+  const input: CoverageInput = {
+    expectedCategories,
+    coveredCategories: coveredCategories.map((c) => c.category!).filter(Boolean),
+    organizationsDiscovered: orgs.length,
+    organizationsWithSource: orgs.filter((o) => linkedIds.has(o.id)).length,
+    venuesDiscovered: venues.length,
+    venuesMonitored: venues.filter((v) => linkedIds.has(v.id)).length,
+    sourcesTotal: activeSources.length,
+    sourcesHealthy: activeSources.filter((s) => s.healthStatus === "healthy").length,
+    sourcesDegraded: activeSources.filter((s) => s.healthStatus === "degraded").length,
+    sourcesFailed: activeSources.filter((s) => s.healthStatus === "failed").length,
+    eventsTotal: eventRows[0]?.total ?? 0,
+    eventsWithOfficialFlyer: flyerRows[0]?.total ?? 0,
+    discoveryProbeEvents: candidateRows.length,
+    discoveryProbeMisses: misses.length,
+  };
+
+  return computeCoverage(input);
+}
+
+/** Sources with their entity, for the dashboard's Active Sources table. */
+export async function sourcesWithEntities(schoolId: string) {
+  return db
+    .select({
+      source: sources,
+      entityName: entities.name,
+      entityType: entities.entityType,
+    })
+    .from(sources)
+    .leftJoin(entities, eq(sources.entityId, entities.id))
+    .where(eq(sources.schoolId, schoolId))
+    .orderBy(sql`${sources.active} DESC, ${sources.crawlPriority} DESC`);
+}
+
+/** Pending candidates awaiting review, most confident first. */
+export async function pendingCandidates(schoolId: string, limit = 50) {
+  return db
+    .select()
+    .from(sourceDiscoveryCandidates)
+    .where(
+      and(
+        eq(sourceDiscoveryCandidates.schoolId, schoolId),
+        inArray(sourceDiscoveryCandidates.status, ["pending"]),
+      ),
+    )
+    .orderBy(sql`${sourceDiscoveryCandidates.confidence} DESC`)
+    .limit(limit);
+}
+
+/** Entities of one kind, with how many active sources each has. */
+export async function entitiesWithSourceCounts(schoolId: string, entityType: "organization" | "venue" | "promoter") {
+  return db
+    .select({
+      entity: entities,
+      sourceCount: sql<number>`count(${entitySources.sourceId})::int`,
+    })
+    .from(entities)
+    .leftJoin(entitySources, eq(entities.id, entitySources.entityId))
+    .where(and(eq(entities.schoolId, schoolId), eq(entities.entityType, entityType)))
+    .groupBy(entities.id)
+    .orderBy(entities.name);
+}

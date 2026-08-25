@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 import { db, events, eventSources, sources } from "@college-events/db";
-import type { EventCategory, SourceCategory, SourceType } from "@college-events/core";
+import type { AdapterType, EventCategory, SourceCategory, SourceType } from "@college-events/core";
+import { fingerprintUrl } from "@college-events/ingestion";
 // Deep imports into each pipeline file rather than the @college-events/worker
 // barrel (`import { x } from "@college-events/worker"`) — the barrel's
 // index.ts does `export * from "./pipeline/render.js"` alongside everything
@@ -86,15 +87,40 @@ export async function mergeEventsAction(primaryEventId: string, formData: FormDa
 
 export async function addSourceAction(formData: FormData) {
   const school = await getCurrentSchool();
+  const url = String(formData.get("url") || "") || null;
+  const trustScore = Number(formData.get("trustScore") || 5);
+  const crawlIntervalMinutes = Number(formData.get("crawlIntervalMinutes") || 360);
+
+  // Adapter type can be stated explicitly, but a URL is usually enough to
+  // work it out — a person adding a venue should not have to know which
+  // platform it runs on.
+  const declared = String(formData.get("adapterType") || "");
+  const adapterType =
+    declared && declared !== "generic_web"
+      ? (declared as AdapterType)
+      : url
+        ? fingerprintUrl(url).adapterType
+        : ("generic_web" as AdapterType);
+
   await db.insert(sources).values({
     schoolId: school.id,
     name: String(formData.get("name")),
     sourceType: String(formData.get("sourceType")) as SourceType,
+    adapterType,
     category: String(formData.get("category")) as SourceCategory,
-    url: String(formData.get("url") || "") || null,
+    url,
+    discoveryUrl: url,
     instagramHandle: String(formData.get("instagramHandle") || "") || null,
-    priority: Number(formData.get("priority") || 5),
-    scrapeFrequencyMinutes: Number(formData.get("scrapeFrequencyMinutes") || 360),
+    trustScore,
+    crawlPriority: trustScore,
+    // Kept in step with trustScore so any un-migrated reader of the legacy
+    // column still sees a sensible value.
+    priority: trustScore,
+    crawlIntervalMinutes,
+    scrapeFrequencyMinutes: crawlIntervalMinutes,
+    // Due immediately: a source someone just added should be crawled on
+    // the next tick, not after a full interval.
+    nextRunAt: null,
   });
   revalidatePath("/sources");
 }

@@ -12,3 +12,4 @@ export * from "./logic/source-health.js";
 export * from "./logic/entities.js";
 export * from "./logic/assets.js";
 export * from "./logic/scheduling.js";
+export * from "./logic/coverage.js";

@@ -13,6 +13,7 @@
     "@college-events/ai": "workspace:*",
     "@college-events/core": "workspace:*",
     "@college-events/db": "workspace:*",
+    "@college-events/ingestion": "workspace:*",
     "@college-events/scheduler": "workspace:*",
     "@college-events/worker": "workspace:*",
     "drizzle-orm": "^0.36.4",

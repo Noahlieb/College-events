@@ -26,6 +26,9 @@ importers:
       '@college-events/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@college-events/ingestion':
+        specifier: workspace:*
+        version: link:../../packages/ingestion
       '@college-events/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
