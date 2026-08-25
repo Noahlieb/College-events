@@ -11,6 +11,8 @@ interface CsvImportSummary {
   merged: number;
   parseErrors: { rowNumber: number; reason: string }[];
   submitErrors: { rowNumber: number; eventName: string; reason: string }[];
+  routingErrors: { rowNumber: number; university: string; reason: string }[];
+  bySchool: { schoolId: string; schoolShortName: string; created: number; merged: number }[];
 }
 
 export default async function ImportPage({
@@ -72,11 +74,27 @@ export default async function ImportPage({
               <div className="label">Merged (already existed)</div>
             </div>
             <div className="stat-card">
-              <div className="value">{summary.parseErrors.length + summary.submitErrors.length}</div>
+              <div className="value">
+                {summary.parseErrors.length + summary.submitErrors.length + (summary.routingErrors?.length ?? 0)}
+              </div>
               <div className="label">Skipped</div>
             </div>
           </div>
-          {(summary.parseErrors.length > 0 || summary.submitErrors.length > 0) && (
+          {summary.bySchool && summary.bySchool.length > 1 && (
+            <div style={{ padding: "0 16px 16px" }}>
+              <h2 className="section-label" style={{ marginBottom: 8 }}>
+                By university
+              </h2>
+              <div className="flags" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                {summary.bySchool.map((s) => (
+                  <span className="flag-pill" key={s.schoolId}>
+                    {s.schoolShortName}: {s.created} new, {s.merged} merged
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {(summary.parseErrors.length > 0 || summary.submitErrors.length > 0 || (summary.routingErrors?.length ?? 0) > 0) && (
             <div style={{ padding: "0 16px 16px" }}>
               <h2 className="section-label" style={{ marginBottom: 8 }}>
                 Skipped rows
@@ -85,6 +103,11 @@ export default async function ImportPage({
                 {summary.parseErrors.map((e) => (
                   <span className="flag-pill" key={`parse-${e.rowNumber}`}>
                     Row {e.rowNumber}: {e.reason}
+                  </span>
+                ))}
+                {(summary.routingErrors ?? []).map((e) => (
+                  <span className="flag-pill" key={`route-${e.rowNumber}`}>
+                    Row {e.rowNumber} (University: {e.university}): {e.reason}
                   </span>
                 ))}
                 {summary.submitErrors.map((e) => (
@@ -193,6 +216,16 @@ export default async function ImportPage({
                 <td>Link</td>
                 <td>No</td>
                 <td>the event&apos;s own page — stored as its source link</td>
+              </tr>
+              <tr>
+                <td>University</td>
+                <td>No</td>
+                <td>
+                  short name or full name (e.g. <code>UCF</code>) — routes that row to a different school than the
+                  one you&apos;re uploading from, so one file can cover several universities at once. Leave blank on
+                  every row for a single-school upload; a value that doesn&apos;t match any known school is skipped
+                  and reported, never guessed.
+                </td>
               </tr>
             </tbody>
           </table>

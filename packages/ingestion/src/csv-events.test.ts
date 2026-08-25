@@ -113,3 +113,40 @@ describe("parseEventsCsv", () => {
     expect(errors[0]!.rowNumber).toBe(2);
   });
 });
+
+describe("parseEventsCsv — University column (multi-school uploads)", () => {
+  const MULTI_HEADER =
+    "Date,Day,Time (ET),Category,Event,Presenter/Team,Venue,Notes,Image URL,Image File,Link,University";
+  function multiCsv(...rows: string[]): string {
+    return [MULTI_HEADER, ...rows].join("\n");
+  }
+
+  it("carries a per-row University value as universityHint", () => {
+    const { rows } = parseEventsCsv(
+      multiCsv(
+        "2026-08-19,Wed,9:00 AM,Campus,SOAR Fair,FAU Library,Library,Notes,,,https://x.com,FAU",
+        "2026-08-20,Thu,7:00 PM,Nightlife,Knight Party,Some Promoter,Downtown,Notes,,,https://x.com,UCF",
+      ),
+      { defaultCity: "Boca Raton", submittedBy: "test" },
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.universityHint).toBe("FAU");
+    expect(rows[1]!.universityHint).toBe("UCF");
+  });
+
+  it("leaves universityHint null when the column is absent — single-school CSVs are unaffected", () => {
+    const { rows } = parseEventsCsv(
+      csv("2026-08-19,Wed,9:00 AM,Campus,SOAR Fair,FAU Library,Library,Notes,,,https://x.com"),
+      { defaultCity: "Boca Raton", submittedBy: "test" },
+    );
+    expect(rows[0]!.universityHint).toBeNull();
+  });
+
+  it("leaves universityHint null when the column exists but a row's cell is blank", () => {
+    const { rows } = parseEventsCsv(
+      multiCsv("2026-08-19,Wed,9:00 AM,Campus,SOAR Fair,FAU Library,Library,Notes,,,https://x.com,"),
+      { defaultCity: "Boca Raton", submittedBy: "test" },
+    );
+    expect(rows[0]!.universityHint).toBeNull();
+  });
+});

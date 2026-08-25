@@ -5,6 +5,12 @@ import type { ManualEventInput } from "./manual.js";
 export interface CsvEventRow {
   input: ManualEventInput;
   rowNumber: number; // 1-indexed, header excluded — for error reporting
+  /** Raw text from a University/School/Campus column, when the row has one.
+   * Null means "use whatever school the caller is importing into" — a
+   * single-school CSV never needs this column at all. Left unresolved here
+   * on purpose: this package has no database access, so turning this into
+   * an actual school id is the importer's job, not the parser's. */
+  universityHint: string | null;
 }
 
 export interface CsvParseError {
@@ -87,11 +93,14 @@ function splitVenue(raw: string, defaultCity: string): { venue: string; city: st
 
 /**
  * Parses a CSV of events (columns: Date, Time (ET), Category, Event,
- * Presenter/Team, Venue, Notes, Image URL, Link — see README) into
- * ManualEventInput rows ready for submitManualEvent. Column names are
+ * Presenter/Team, Venue, Notes, Image URL, Link, University — see README)
+ * into ManualEventInput rows ready for submitManualEvent. Column names are
  * matched case-insensitively with a couple of common aliases; required
  * columns (Date, Event, Time) missing on a row produce a CsvParseError
  * instead of throwing, so one bad row doesn't fail the whole upload.
+ *
+ * University is optional and only matters for a multi-school upload: a row
+ * with no value there targets whatever school the caller is importing into.
  */
 export function parseEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
   const records = parseCsvRecords(csvText);
@@ -109,6 +118,7 @@ export function parseEventsCsv(csvText: string, opts: { defaultCity: string; sub
     const notes = pickField(record, "Notes", "Description");
     const imageUrl = pickField(record, "Image URL", "Image", "Photo URL");
     const link = pickField(record, "Link", "URL", "Event URL");
+    const university = pickField(record, "University", "School", "Campus");
 
     if (!name) {
       errors.push({ rowNumber, reason: "missing Event/Name" });
@@ -132,6 +142,7 @@ export function parseEventsCsv(csvText: string, opts: { defaultCity: string; sub
 
     rows.push({
       rowNumber,
+      universityHint: university || null,
       input: {
         name,
         date,
