@@ -5,7 +5,7 @@ import {
   recommendSources,
   sourcesWithEntities,
 } from "@college-events/db";
-import { COVERAGE_CATEGORIES, adapterSupport, platformSupported } from "@college-events/ingestion";
+import { COVERAGE_CATEGORIES, adapterSupport, platformSupported, registeredAdapterTypes } from "@college-events/ingestion";
 import { SOURCE_CATEGORIES, SOURCE_TYPES, ADAPTER_TYPES } from "@college-events/core";
 import { getCurrentSchool, listUniversities } from "@/lib/current-school";
 import { addSourceAction, toggleSourceActiveAction } from "@/lib/actions";
@@ -62,7 +62,11 @@ function ago(date: Date | null): string {
 }
 
 function pct(ratio: number | null): string {
-  return ratio === null ? "—" : `${Math.round(ratio * 100)}%`;
+  // A null ratio means "nothing to divide by yet" — a brand-new
+  // university with no events, or a probe that has never run. Showing "—"
+  // reads as a rendering glitch; "Not measured" says plainly that this is
+  // an absence of data, not a bad number.
+  return ratio === null ? "Not measured" : `${Math.round(ratio * 100)}%`;
 }
 
 export default async function SourcesPage() {
@@ -71,8 +75,9 @@ export default async function SourcesPage() {
 
   const expected = COVERAGE_CATEGORIES.filter((c) => c.expected).map((c) => c.key);
   const categoryLabels = Object.fromEntries(COVERAGE_CATEGORIES.map((c) => [c.key, c.label]));
+  const supportedAdapterTypes = new Set(registeredAdapterTypes());
   const [coverage, sourceRows, candidates, organizations, venues] = await Promise.all([
-    gatherCoverage(school.id, expected),
+    gatherCoverage(school.id, expected, { supportedAdapterTypes }),
     sourcesWithEntities(school.id),
     pendingCandidates(school.id),
     entitiesWithSourceCounts(school.id, "organization"),

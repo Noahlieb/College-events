@@ -31,11 +31,20 @@ export interface CoverageInput {
   sourcesHealthy: number;
   sourcesDegraded: number;
   sourcesFailed: number;
+  /** Sources whose fingerprinted platform we cannot crawl at all — a gap
+   * on our side, distinct from a source that is unhealthy. */
+  unsupportedPlatformsDetected: number;
 
-  /** Events seen in the reporting window. */
+  /** Events found in the last 7 days — a short, legible freshness signal,
+   * separate from the wider window the flyer-rate metric uses. */
+  eventsLast7Days: number;
+
+  /** Events seen in the flyer-rate reporting window. */
   eventsTotal: number;
   /** Events whose chosen artwork is real (not generated). */
   eventsWithOfficialFlyer: number;
+  /** Events currently rendering generated artwork. */
+  eventsWithGeneratedArtwork: number;
 
   /** Events an independent discovery pass found. */
   discoveryProbeEvents: number;
@@ -74,6 +83,28 @@ export function computeCoverage(input: CoverageInput): CoverageReport {
   const missRate = ratio(input.discoveryProbeMisses, input.discoveryProbeEvents);
 
   const metrics: CoverageMetric[] = [
+    {
+      key: "active_sources",
+      label: "Active sources",
+      value: input.sourcesTotal,
+      ratio: null, // a raw count, not a fraction of anything
+    },
+    {
+      key: "unsupported_platforms",
+      label: "Detected platforms we cannot crawl",
+      value: input.unsupportedPlatformsDetected,
+      ratio: null,
+      note:
+        input.unsupportedPlatformsDetected > 0
+          ? "Fingerprinted, but no adapter exists yet — a gap on our side, not a broken source."
+          : undefined,
+    },
+    {
+      key: "events_last_7_days",
+      label: "Events found, last 7 days",
+      value: input.eventsLast7Days,
+      ratio: null,
+    },
     {
       key: "category_coverage",
       label: "Expected source categories covered",
@@ -121,6 +152,13 @@ export function computeCoverage(input: CoverageInput): CoverageReport {
         input.eventsTotal > 0 && input.eventsWithOfficialFlyer / input.eventsTotal < 0.5
           ? "Most events are rendering generated art. Usually means the sources reporting them are listings rather than the organizers' own pages."
           : undefined,
+    },
+    {
+      key: "generated_artwork_rate",
+      label: "Events using generated artwork",
+      value: input.eventsWithGeneratedArtwork,
+      outOf: input.eventsTotal,
+      ratio: ratio(input.eventsWithGeneratedArtwork, input.eventsTotal),
     },
     {
       key: "discovery_miss_rate",

@@ -21,14 +21,15 @@ import { computeCoverage, type CoverageInput, type CoverageReport } from "@colle
 export async function gatherCoverage(
   schoolId: string,
   expectedCategories: string[],
-  options: { since?: Date } = {},
+  options: { since?: Date; supportedAdapterTypes?: Set<string> } = {},
 ): Promise<CoverageReport> {
   const since = options.since ?? new Date(Date.now() - 30 * 86_400_000);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
 
-  const [sourceRows, entityRows, linkedEntityRows, eventRows, flyerRows, missCountRow] =
+  const [sourceRows, entityRows, linkedEntityRows, eventRows, flyerRows, missCountRow, recentEventRow, generatedRows] =
     await Promise.all([
       db
-        .select({ healthStatus: sources.healthStatus, active: sources.active })
+        .select({ healthStatus: sources.healthStatus, active: sources.active, adapterType: sources.adapterType })
         .from(sources)
         .where(eq(sources.schoolId, schoolId)),
 
@@ -81,6 +82,23 @@ export async function gatherCoverage(
         })
         .from(discoveryProbeRuns)
         .where(eq(discoveryProbeRuns.schoolId, schoolId)),
+
+      db
+        .select({ total: count() })
+        .from(events)
+        .where(and(eq(events.schoolId, schoolId), gte(events.createdAt, sevenDaysAgo))),
+
+      db
+        .select({ total: count() })
+        .from(events)
+        .innerJoin(assetCandidates, eq(events.canonicalAssetId, assetCandidates.id))
+        .where(
+          and(
+            eq(events.schoolId, schoolId),
+            gte(events.createdAt, since),
+            eq(assetCandidates.isAiGenerated, true),
+          ),
+        ),
     ]);
 
   const coveredCategories = await db
@@ -97,6 +115,14 @@ export async function gatherCoverage(
   const activeSources = sourceRows.filter((s) => s.active);
   const linkedIds = new Set(linkedEntityRows.map((r) => r.entityId));
 
+  // A source is "unsupported" when its platform is identified but this
+  // deployment has no adapter for it — distinct from an unhealthy source,
+  // whose platform we can read but is currently misbehaving.
+  const supported = options.supportedAdapterTypes;
+  const unsupportedCount = supported
+    ? activeSources.filter((s) => s.adapterType && !supported.has(s.adapterType)).length
+    : 0;
+
   const orgs = entityRows.filter((e) => e.entityType === "organization");
   const venues = entityRows.filter((e) => e.entityType === "venue");
 
@@ -111,8 +137,11 @@ export async function gatherCoverage(
     sourcesHealthy: activeSources.filter((s) => s.healthStatus === "healthy").length,
     sourcesDegraded: activeSources.filter((s) => s.healthStatus === "degraded").length,
     sourcesFailed: activeSources.filter((s) => s.healthStatus === "failed").length,
+    unsupportedPlatformsDetected: unsupportedCount,
+    eventsLast7Days: recentEventRow[0]?.total ?? 0,
     eventsTotal: eventRows[0]?.total ?? 0,
     eventsWithOfficialFlyer: flyerRows[0]?.total ?? 0,
+    eventsWithGeneratedArtwork: generatedRows[0]?.total ?? 0,
     // 0/0 until the probe has actually run at least once; computeCoverage
     // reports "not measured" for that case rather than a falsely clean 0%
     // miss rate.
