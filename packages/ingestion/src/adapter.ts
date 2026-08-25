@@ -44,6 +44,10 @@ export interface CrawlContext {
   lookaheadDays?: number;
   /** Frozen "now" so a run is reproducible in tests. */
   now?: Date;
+  /** Credential lookup, injectable so adapters needing an API key are
+   * testable without touching the real environment. Defaults to
+   * `process.env` at the point of use. */
+  env?: Record<string, string | undefined>;
   signal?: AbortSignal;
 }
 

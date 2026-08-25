@@ -96,6 +96,32 @@ export const CRAWL_JOB_STATUSES = [
 ] as const;
 export type CrawlJobStatus = (typeof CRAWL_JOB_STATUSES)[number];
 
+/**
+ * Whether we can actually crawl a platform, as distinct from whether a
+ * particular source is healthy.
+ *
+ * Fingerprinting can confidently identify a platform we have no adapter
+ * for. Showing that source as "active" would be a lie — it will never
+ * produce an event — and showing it as "failed" would be a different lie,
+ * blaming the source for a gap on our side. Both states are real and they
+ * need different words.
+ */
+export const ADAPTER_SUPPORT_STATUSES = [
+  /** An adapter exists and can crawl this source now. */
+  "supported",
+  /** Platform identified, but nothing here can read it yet. Our gap. */
+  "no_adapter",
+  /** An adapter exists but needs a credential this deployment lacks. */
+  "auth_required",
+  /** Reachable, but the platform is declining automated access right now. */
+  "degraded",
+  /** The platform has refused access persistently enough to stop asking. */
+  "blocked",
+  /** Deliberately switched off by an operator. */
+  "disabled",
+] as const;
+export type AdapterSupportStatus = (typeof ADAPTER_SUPPORT_STATUSES)[number];
+
 export const SOURCE_TYPES = [
   "instagram",
   "owl_central",

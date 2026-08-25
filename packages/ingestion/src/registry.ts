@@ -13,6 +13,12 @@ import { genericWebpageAdapter } from "./jsonld.js";
 import { sidearmAthleticsAdapter } from "./sidearm.js";
 import { campusLabsAdapter } from "./campuslabs.js";
 import { poshAdapter } from "./posh.js";
+import { localistAdapter } from "./localist.js";
+import { campusGroupsAdapter } from "./campusgroups.js";
+import { collegeNetAdapter } from "./collegenet.js";
+import { structuredPlatformAdapters } from "./ticketing-platforms.js";
+import { eventbriteAdapter, ticketmasterAdapter } from "./keyed-platforms.js";
+import { googleCalendarAdapter, wordpressAdapter } from "./web-platforms.js";
 
 /**
  * Wraps a pre-existing `SourceAdapter` (the `fetchNew(ctx)` shape) as an
@@ -62,9 +68,23 @@ const FEED_CAPABILITIES: AdapterCapabilities = {
  * here. Entries are only added when a genuinely new *platform* appears.
  */
 const ADAPTERS: EventSourceAdapter[] = [
-  // Native implementations of the new interface.
+  // Campus platforms.
   campusLabsAdapter,
+  localistAdapter,
+  campusGroupsAdapter,
+  collegeNetAdapter,
+  // Ticketing / nightlife platforms whose public surface is structured
+  // data on their event pages.
   poshAdapter,
+  ...structuredPlatformAdapters,
+  // Platforms with official APIs behind a credential. Registered even
+  // without a key so the source reports AUTH_REQUIRED — "add a token"
+  // rather than "unsupported platform".
+  eventbriteAdapter,
+  ticketmasterAdapter,
+  // Whatever a small venue or department happens to run on.
+  wordpressAdapter,
+  googleCalendarAdapter,
   // Pre-refactor adapters, bridged rather than rewritten.
   fromLegacyAdapter("sidearm", { ...FEED_CAPABILITIES, assets: true }, sidearmAthleticsAdapter),
   fromLegacyAdapter("ical", FEED_CAPABILITIES, icalAdapter),

@@ -5,7 +5,7 @@ import {
   pendingCandidates,
   sourcesWithEntities,
 } from "@college-events/db";
-import { COVERAGE_CATEGORIES } from "@college-events/ingestion";
+import { COVERAGE_CATEGORIES, adapterSupport, platformSupported } from "@college-events/ingestion";
 import { SOURCE_CATEGORIES, SOURCE_TYPES, ADAPTER_TYPES } from "@college-events/core";
 import { getCurrentSchool, listUniversities } from "@/lib/current-school";
 import { addSourceAction, toggleSourceActiveAction } from "@/lib/actions";
@@ -26,6 +26,31 @@ const HEALTH_BADGE: Record<string, string> = {
   degraded: "badge-amber",
   failed: "badge-red",
   disabled: "badge-muted",
+};
+
+/**
+ * Support status answers a different question from health: "can we read
+ * this platform at all", versus "did the last read work". A detected
+ * platform with no adapter is never shown as active — it would never
+ * produce an event — and never as failed, which would blame the source
+ * for a gap on our side.
+ */
+const SUPPORT_BADGE: Record<string, string> = {
+  supported: "badge-green",
+  no_adapter: "badge-purple",
+  auth_required: "badge-blue",
+  degraded: "badge-amber",
+  blocked: "badge-red",
+  disabled: "badge-muted",
+};
+
+const SUPPORT_LABEL: Record<string, string> = {
+  supported: "Supported",
+  no_adapter: "Not yet supported",
+  auth_required: "Needs credential",
+  degraded: "Access declined",
+  blocked: "Blocked",
+  disabled: "Off",
 };
 
 function ago(date: Date | null): string {
@@ -154,10 +179,18 @@ export default async function SourcesPage() {
                     <div style={{ fontSize: 11, color: "var(--muted)" }}>{c.url}</div>
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {c.detectedAdapter ?? "—"}
+                    {c.detectedAdapter ?? "unidentified"}
                     <div style={{ fontSize: 11, color: "var(--muted)" }}>
                       {Math.round(c.confidence * 100)}% confident
                     </div>
+                    {/* Approving a candidate whose platform we cannot read
+                        produces a source that will never yield an event —
+                        so say so before the click, not after. */}
+                    <span
+                      className={`badge ${platformSupported(c.detectedAdapter) ? "badge-green" : "badge-purple"}`}
+                    >
+                      {platformSupported(c.detectedAdapter) ? "Adapter: supported" : "Adapter: not yet supported"}
+                    </span>
                   </td>
                   <td style={{ fontSize: 11, color: "var(--muted)" }}>{c.evidence.join(" · ")}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
@@ -241,6 +274,7 @@ export default async function SourcesPage() {
               <th>Name</th>
               <th>Adapter</th>
               <th>Entity</th>
+              <th>Adapter status</th>
               <th>Trust / Crawl</th>
               <th>Last crawl</th>
               <th>Last event</th>
@@ -249,7 +283,14 @@ export default async function SourcesPage() {
             </tr>
           </thead>
           <tbody>
-            {sourceRows.map(({ source: s, entityName, entityType }) => (
+            {sourceRows.map(({ source: s, entityName, entityType }) => {
+              const support = adapterSupport({
+                adapterType: s.adapterType,
+                active: s.active,
+                healthStatus: s.healthStatus,
+                consecutiveFailures: s.consecutiveFailures,
+              });
+              return (
               <tr key={s.id}>
                 <td>
                   <strong>{s.name}</strong>
@@ -264,6 +305,12 @@ export default async function SourcesPage() {
                 <td style={{ fontSize: 12 }}>
                   {entityName ?? <span style={{ color: "var(--muted)" }}>unlinked</span>}
                   {entityType && <div style={{ fontSize: 11, color: "var(--muted)" }}>{entityType}</div>}
+                </td>
+                <td>
+                  <span className={`badge ${SUPPORT_BADGE[support.status] ?? "badge-muted"}`}>
+                    {SUPPORT_LABEL[support.status] ?? support.status}
+                  </span>
+                  <div style={{ fontSize: 11, color: "var(--muted)", maxWidth: 260 }}>{support.detail}</div>
                 </td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   {s.trustScore} / {s.crawlPriority}
@@ -288,7 +335,8 @@ export default async function SourcesPage() {
                   </form>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

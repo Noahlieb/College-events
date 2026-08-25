@@ -37,8 +37,19 @@ describe("adapter registry", () => {
     expect(a!.type).toBe("sidearm");
   });
 
-  it("returns null for a platform with no adapter yet", () => {
-    expect(adapterFor("partiful")).toBeNull();
+  it("returns null only for inputs that are deliberately not crawled", () => {
+    // external_social is push-fed by an authorized connector and manual is
+    // hand entry — neither should ever gain a crawler.
+    expect(adapterFor("external_social")).toBeNull();
+    expect(adapterFor("manual")).toBeNull();
+  });
+
+  it("covers every platform the fingerprinter can identify", () => {
+    // A platform we can name but cannot read is a real state, but it
+    // should be a deliberate one — this test is what makes adding a
+    // fingerprint rule without an adapter a visible decision.
+    const unsupported = (ADAPTER_TYPES as readonly AdapterType[]).filter((t) => adapterFor(t) === null);
+    expect(unsupported.sort()).toEqual(["external_social", "manual"]);
   });
 
   it("declares capabilities for every registered adapter", () => {
