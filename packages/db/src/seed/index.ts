@@ -1,8 +1,32 @@
+import { eq } from "drizzle-orm";
 import "../env.js";
 import { db, pool } from "../client.js";
-import { events, eventSources, processingLogs, rawContent, schools, sources } from "../schema.js";
-import { categorizeEvent, computeVerificationStatus, distanceMiles, scoreEvent } from "@college-events/core";
-import { FAU_EVENTS, FAU_PENDING_RAW_CONTENT, FAU_SCHOOL, FAU_SOURCES, dt } from "./data.js";
+import {
+  entities,
+  entitySources,
+  events,
+  eventSources,
+  processingLogs,
+  rawContent,
+  schools,
+  sources,
+} from "../schema.js";
+import {
+  categorizeEvent,
+  computeVerificationStatus,
+  distanceMiles,
+  normalizeEntityName,
+  scoreEvent,
+} from "@college-events/core";
+import {
+  FAU_ENTITIES,
+  FAU_EVENTS,
+  FAU_PENDING_RAW_CONTENT,
+  FAU_SCHOOL,
+  FAU_SOURCES,
+  SECONDARY_SOURCE_KEYS,
+  dt,
+} from "./data.js";
 
 const FAU_CAMPUS = { lat: FAU_SCHOOL.latitude, lng: FAU_SCHOOL.longitude };
 
@@ -56,6 +80,45 @@ async function main() {
     sourceIdByKey.set(s.key, row.id);
   }
   console.log(`  sources: ${sourceIdByKey.size}`);
+
+  // ── entity graph ────────────────────────────────────────────────
+  // Link each source to the real-world producer behind it, so several
+  // sources reporting one venue's calendar are recognised as such rather
+  // than looking like unrelated feeds.
+  let entityLinks = 0;
+  for (const e of FAU_ENTITIES) {
+    const [entity] = await db
+      .insert(entities)
+      .values({
+        schoolId: school.id,
+        entityType: e.entityType,
+        name: e.name,
+        normalizedName: normalizeEntityName(e.name),
+        website: e.website ?? null,
+        engagementProfileUrl: e.engagementProfileUrl ?? null,
+        instagramHandle: e.instagramHandle ?? null,
+        eventPageUrl: e.eventPageUrl ?? null,
+        ticketingUrl: e.ticketingUrl ?? null,
+        city: e.city ?? null,
+      })
+      .returning();
+    if (!entity) throw new Error(`Failed to insert entity ${e.key}`);
+
+    for (const sourceKey of e.sourceKeys ?? []) {
+      const sourceId = sourceIdByKey.get(sourceKey);
+      if (!sourceId) throw new Error(`Entity ${e.key} references unknown source ${sourceKey}`);
+      const role = SECONDARY_SOURCE_KEYS.has(sourceKey) ? "secondary" : "primary";
+      await db.insert(entitySources).values({ entityId: entity.id, sourceId, role });
+      // The denormalized pointer on the source is what the crawler reads;
+      // entity_sources is the full many-to-many record.
+      await db
+        .update(sources)
+        .set({ entityType: e.entityType, entityId: entity.id })
+        .where(eq(sources.id, sourceId));
+      entityLinks++;
+    }
+  }
+  console.log(`  entities: ${FAU_ENTITIES.length} (${entityLinks} source links)`);
 
   let eventCount = 0;
   const now = new Date();

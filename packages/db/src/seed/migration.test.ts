@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ADAPTER_TYPES } from "@college-events/core";
-import { FAU_SCHOOL, FAU_SOURCES } from "./data.js";
+import { FAU_ENTITIES, FAU_SCHOOL, FAU_SOURCES, SECONDARY_SOURCE_KEYS } from "./data.js";
 
 /**
  * Guards the FAU migration into the multi-university model. FAU is the
@@ -120,5 +120,61 @@ describe("FAU source migration", () => {
       expect(typeof trust).toBe("number");
       expect(typeof crawl).toBe("number");
     }
+  });
+});
+
+describe("entity graph", () => {
+  const sourceKeys = new Set(FAU_SOURCES.map((s) => s.key));
+
+  it("links every entity to sources that actually exist", () => {
+    for (const e of FAU_ENTITIES) {
+      for (const key of e.sourceKeys ?? []) {
+        expect(sourceKeys.has(key), `entity "${e.key}" references unknown source "${key}"`).toBe(true);
+      }
+    }
+  });
+
+  it("gives the venue sources a venue to belong to", () => {
+    // The four venue rows kept from the pre-refactor seed are exactly the
+    // ones that need an entity — they are real places with several possible
+    // channels each.
+    for (const key of ["culture_room", "wharf_ftl", "revolution_live"]) {
+      const owner = FAU_ENTITIES.find((e) => (e.sourceKeys ?? []).includes(key));
+      expect(owner, `no entity owns source "${key}"`).toBeDefined();
+      expect(owner!.entityType).toBe("venue");
+    }
+  });
+
+  it("treats a tourism calendar as a secondary source, not a venue", () => {
+    // It reports on many venues without being any of them, so it must not
+    // speak for them when flyers are compared.
+    expect(SECONDARY_SOURCE_KEYS.has("visit_lauderdale")).toBe(true);
+    const owner = FAU_ENTITIES.find((e) => (e.sourceKeys ?? []).includes("visit_lauderdale"))!;
+    expect(owner.entityType).not.toBe("venue");
+  });
+
+  it("keeps the social watchlist entities identified by handle", () => {
+    // A shared handle is what later proves an Instagram source and a
+    // website belong to the same organization.
+    for (const key of ["fau_sg_ig", "fau_union_ig", "sofla_nightlife_ig"]) {
+      const owner = FAU_ENTITIES.find((e) => (e.sourceKeys ?? []).includes(key))!;
+      expect(owner.instagramHandle, `entity for "${key}" has no handle`).toBeTruthy();
+    }
+  });
+
+  it("never assigns one source to two entities", () => {
+    // The denormalized sources.entity_id can only hold one owner, so a
+    // source claimed twice would silently lose one of them.
+    const seen = new Set<string>();
+    for (const e of FAU_ENTITIES) {
+      for (const key of e.sourceKeys ?? []) {
+        expect(seen.has(key), `source "${key}" is claimed by two entities`).toBe(false);
+        seen.add(key);
+      }
+    }
+  });
+
+  it("has no duplicate entity keys", () => {
+    expect(new Set(FAU_ENTITIES.map((e) => e.key)).size).toBe(FAU_ENTITIES.length);
   });
 });

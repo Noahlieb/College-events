@@ -137,6 +137,115 @@ export const FAU_SOURCES: SeedSource[] = [
   { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", adapterType: "manual", category: "campus", priority: 8, scrapeFrequencyMinutes: 0, active: false },
 ];
 
+/**
+ * The real-world producers behind FAU's sources.
+ *
+ * These are not new data — they are the venues and organizations the
+ * existing sources already pointed at, named as entities so several
+ * sources can be recognised as reporting one producer's calendar. The
+ * Wharf's website and its Posh page are two sources, one venue; without
+ * that link, the same Saturday night arriving from both looks like two
+ * events with two different flyers.
+ */
+export interface SeedEntity {
+  key: string;
+  entityType: "organization" | "venue" | "promoter" | "department" | "university";
+  name: string;
+  website?: string;
+  instagramHandle?: string;
+  eventPageUrl?: string;
+  ticketingUrl?: string;
+  engagementProfileUrl?: string;
+  city?: string;
+  /** Source keys this entity owns. "primary" means the source is the
+   * entity's own channel and therefore speaks for it. */
+  sourceKeys?: string[];
+}
+
+export const FAU_ENTITIES: SeedEntity[] = [
+  {
+    key: "fau_athletics_dept",
+    entityType: "department",
+    name: "FAU Athletics",
+    website: "https://fausports.com",
+    city: "Boca Raton",
+    sourceKeys: ["fau_athletics"],
+  },
+  {
+    key: "fau_student_engagement",
+    entityType: "department",
+    name: "FAU Student Engagement",
+    website: "https://fau.edu",
+    engagementProfileUrl: "https://fau.campuslabs.com/engage",
+    city: "Boca Raton",
+    // Owl Central reports for the whole engagement platform; the individual
+    // student orgs behind each event are resolved as their own entities
+    // during processing.
+    sourceKeys: ["owl_central_csv", "owl_central"],
+  },
+  {
+    key: "culture_room_venue",
+    entityType: "venue",
+    name: "Culture Room",
+    website: "https://www.cultureroom.net/",
+    city: "Fort Lauderdale",
+    sourceKeys: ["culture_room"],
+  },
+  {
+    key: "wharf_ftl_venue",
+    entityType: "venue",
+    name: "The Wharf Fort Lauderdale",
+    website: "https://wharfftl.com/events/",
+    city: "Fort Lauderdale",
+    sourceKeys: ["wharf_ftl"],
+  },
+  {
+    key: "revolution_live_venue",
+    entityType: "venue",
+    name: "Revolution Live",
+    website: "https://www.jointherevolution.net/concerts/",
+    city: "Fort Lauderdale",
+    sourceKeys: ["revolution_live"],
+  },
+  {
+    key: "visit_lauderdale_org",
+    entityType: "organization",
+    name: "Visit Lauderdale",
+    website: "https://www.visitlauderdale.com/nightlife/",
+    city: "Fort Lauderdale",
+    // A tourism calendar covers many venues without being any of them — a
+    // secondary source, so it never outranks a venue's own page.
+    sourceKeys: ["visit_lauderdale"],
+  },
+  {
+    key: "fau_student_government",
+    entityType: "organization",
+    name: "FAU Student Government",
+    instagramHandle: "fau_sg",
+    city: "Boca Raton",
+    sourceKeys: ["fau_sg_ig"],
+  },
+  {
+    key: "fau_student_union",
+    entityType: "organization",
+    name: "FAU Student Union",
+    instagramHandle: "fauunion",
+    city: "Boca Raton",
+    sourceKeys: ["fau_union_ig"],
+  },
+  {
+    key: "sofla_nightlife_promoter",
+    entityType: "promoter",
+    name: "SoFla Nightlife",
+    instagramHandle: "sofla.nightlife",
+    city: "Fort Lauderdale",
+    sourceKeys: ["sofla_nightlife_ig"],
+  },
+];
+
+/** Sources that report on an entity without being its own channel. */
+export const SECONDARY_SOURCE_KEYS = new Set(["visit_lauderdale"]);
+
 function dt(date: string, startTime: string, endTime?: string) {
   return parseEventDate({ date, startTime, endTime: endTime ?? null, timezone: FAU_TZ });
 }

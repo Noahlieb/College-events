@@ -160,6 +160,90 @@ export const sources = pgTable("sources", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── entity graph (organizations, venues, promoters) ───────────────
+/**
+ * The real-world things that *produce* events, kept separate from the
+ * sources that *report* them.
+ *
+ * The Wharf Fort Lauderdale is one venue with a website, an Instagram, a
+ * Posh page and a Tixr page — four sources, one entity. Without this table
+ * those four are unrelated rows, and the same night's event arriving from
+ * all four looks like four events. With it, they are four observations of
+ * one venue's calendar, which is what makes cross-source verification and
+ * picking the best flyer possible.
+ *
+ * One table with a discriminator rather than three: organizations, venues
+ * and promoters differ in what they mean, not in what we store or how we
+ * query them, and a single table keeps `sources.entity_id` a plain
+ * foreign key instead of a polymorphic one.
+ */
+export const entities = pgTable(
+  "entities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schoolId: uuid("school_id")
+      .notNull()
+      .references(() => schools.id, { onDelete: "cascade" }),
+    entityType: entityTypeEnum("entity_type").notNull(),
+    name: text("name").notNull(),
+    /** Lowercased/punctuation-stripped name, so "The Wharf FTL" and
+     * "the wharf ftl" resolve to one entity on insert. */
+    normalizedName: text("normalized_name").notNull(),
+
+    website: text("website"),
+    /** Profile on the university's engagement platform, for student orgs. */
+    engagementProfileUrl: text("engagement_profile_url"),
+    instagramHandle: text("instagram_handle"),
+    linktreeUrl: text("linktree_url"),
+    eventPageUrl: text("event_page_url"),
+    ticketingUrl: text("ticketing_url"),
+
+    address: text("address"),
+    city: text("city"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+
+    active: boolean("active").notNull().default(true),
+    metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Scoped per university: two schools can each have a "Student Union".
+    nameIdx: uniqueIndex("entities_school_type_name_idx").on(
+      table.schoolId,
+      table.entityType,
+      table.normalizedName,
+    ),
+  }),
+);
+
+/**
+ * Which sources belong to which entity. `sources.entity_id` carries the
+ * primary owner for fast lookups; this table exists because the
+ * relationship is genuinely many-to-many — a city tourism calendar reports
+ * events for dozens of venues, and one venue is reported by many feeds.
+ */
+export const entitySources = pgTable(
+  "entity_sources",
+  {
+    entityId: uuid("entity_id")
+      .notNull()
+      .references(() => entities.id, { onDelete: "cascade" }),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => sources.id, { onDelete: "cascade" }),
+    /** "primary" = this source is the entity's own channel (its website,
+     * its Instagram). "secondary" = a third party that covers it. Only a
+     * primary source speaks for the entity when flyers are compared. */
+    role: text("role").notNull().default("primary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.entityId, table.sourceId] }),
+  }),
+);
+
 // ── raw content (immutable discovery record) ──────────────────────
 export const rawContent = pgTable(
   "raw_content",
