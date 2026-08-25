@@ -157,7 +157,7 @@ export async function importCsvEvents(
     }
 
     try {
-      const result = await submitManualEvent(targetSchool.id, manualSource.id, row.input);
+      const result = await submitManualEvent(targetSchool.id, manualSource.id, row.input, { requireReview: true });
       const tally = tallies.get(targetSchool.id) ?? { schoolShortName: targetSchool.shortName, created: 0, merged: 0 };
       if (result.merged) tally.merged++;
       else tally.created++;

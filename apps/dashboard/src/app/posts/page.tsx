@@ -2,6 +2,12 @@ import { desc, eq } from "drizzle-orm";
 import { db, postEvents, posts } from "@college-events/db";
 import { sql } from "drizzle-orm";
 import { getCurrentSchool } from "@/lib/current-school";
+import { BuildWeeklyPostsButton } from "@/components/BuildWeeklyPostsButton";
+
+// select-posts crosses multiple weeks and render calls an external HTTP
+// service once per resulting post — comfortably past the platform's
+// default function timeout for a school with several lanes and weeks.
+export const maxDuration = 300;
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "badge-muted",
@@ -39,6 +45,10 @@ export default async function PostsPage() {
       <h1>Weekly posts</h1>
       <p className="subtitle">Each post is a full Instagram carousel — cover slide plus one slide per event.</p>
 
+      <div className="panel" style={{ padding: 16 }}>
+        <BuildWeeklyPostsButton />
+      </div>
+
       <div className="panel">
         <table>
           <thead>
@@ -74,7 +84,7 @@ export default async function PostsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={5} className="empty">
-                  No posts yet. Go to Overview and run "Refresh this week's posts".
+                  No posts yet. Click "Build this week's posts" above.
                 </td>
               </tr>
             )}

@@ -1,7 +1,12 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, events, posts, sources } from "@college-events/db";
 import { getCurrentSchool } from "@/lib/current-school";
-import { runProcessAction, runSelectPostsAction } from "@/lib/actions";
+import { runProcessAction } from "@/lib/actions";
+import { BuildWeeklyPostsButton } from "@/components/BuildWeeklyPostsButton";
+
+// BuildWeeklyPostsButton's action crosses multiple weeks of selection plus
+// a render-service HTTP call per resulting post.
+export const maxDuration = 300;
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "badge-muted",
@@ -168,11 +173,7 @@ export default async function OverviewPage() {
               Run AI processing (pending raw content)
             </button>
           </form>
-          <form action={runSelectPostsAction}>
-            <button className="btn" type="submit">
-              Refresh this week's posts
-            </button>
-          </form>
+          <BuildWeeklyPostsButton />
         </div>
         <p style={{ padding: "0 16px 16px", color: "var(--muted)", fontSize: 12 }}>
           In production these run automatically on a schedule (see the n8n workflows in the README) — these

@@ -56,8 +56,9 @@ export default async function ImportPage({
     <>
       <h1>Import events from CSV</h1>
       <p className="subtitle">
-        Bulk-add events from a spreadsheet export. Each row runs through the same review pipeline as a single manual
-        entry — scored, deduplicated against existing events, and added to the Events tab as <code>active</code>.
+        Bulk-add events from a spreadsheet export. Each row runs through the same scoring and dedup logic as a
+        single manual entry, then lands on the Events tab as <code>needs review</code> — nothing goes live until you
+        Approve it there.
       </p>
 
       {params.error && (

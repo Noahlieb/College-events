@@ -16,6 +16,15 @@ export async function submitManualEvent(
   schoolId: string,
   manualSourceId: string,
   input: ManualEventInput,
+  options: {
+    /** Land as "candidate" (needs a human Approve click) instead of going
+     * live immediately. Off by default — a single manual-entry submission
+     * is already a deliberate, one-at-a-time human act, so there's nothing
+     * left to review. CSV import turns this on: a bulk file can be
+     * hundreds of scraped rows nobody has actually looked at yet, and
+     * "human typed this in" isn't true for a single one of them. */
+    requireReview?: boolean;
+  } = {},
 ): Promise<{ eventId: string; merged: boolean }> {
   const [school] = await db.select().from(schools).where(eq(schools.id, schoolId)).limit(1);
   if (!school) throw new Error(`Unknown school ${schoolId}`);
@@ -125,7 +134,7 @@ export async function submitManualEvent(
       relevanceScore: bucketScores.overall,
       bucketScores,
       verificationStatus,
-      status: verificationStatus === "conflict" ? "candidate" : "active",
+      status: verificationStatus === "conflict" || options.requireReview ? "candidate" : "active",
       flags: [],
     })
     .returning();

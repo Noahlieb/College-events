@@ -20,7 +20,6 @@ import { fingerprintUrl } from "@college-events/ingestion";
 import { approvePost, rejectPost } from "@college-events/worker/dist/pipeline/approve.js";
 import { schedulePost } from "@college-events/worker/dist/pipeline/schedule.js";
 import { processSchoolRawContent } from "@college-events/worker/dist/pipeline/process.js";
-import { selectWeeklyPosts } from "@college-events/worker/dist/pipeline/select-posts.js";
 import { importCsvEvents } from "@college-events/worker/dist/pipeline/csv-import.js";
 import { getCurrentSchool } from "./current-school";
 
@@ -160,12 +159,6 @@ export async function runProcessAction() {
   await processSchoolRawContent(school.id);
   revalidatePath("/");
   revalidatePath("/events");
-}
-
-export async function runSelectPostsAction() {
-  const school = await getCurrentSchool();
-  await selectWeeklyPosts(school.id);
-  revalidatePath("/posts");
 }
 
 // ── CSV import ───────────────────────────────────────────────────────
