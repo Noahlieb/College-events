@@ -4,6 +4,7 @@ import { renderCoverSlide, renderEventSlide, type SlideBranding } from "@college
 import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib/storage.js";
 import { formatDateKicker, formatTimeRange } from "../lib/format.js";
 import { mondayOfWeek, formatWeekRangeLabel } from "../lib/week.js";
+import { resolveEventImage } from "./event-assets.js";
 
 /** Best-effort image fetch — a failed/slow/unreachable source photo must
  * never break rendering; the slide falls back to a category placeholder. */
@@ -85,7 +86,11 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
   assetUrls.push(coverUrl);
 
   for (const { event } of linkedEvents) {
-    const image = await fetchImageSafely(event.sourceImage);
+    // Chosen across every source linked to this event, not just the one
+    // that happened to report it first — a placeholder is only reached
+    // when no source anywhere offered artwork.
+    const { url: imageUrl } = await resolveEventImage(event);
+    const image = await fetchImageSafely(imageUrl);
     const slideBuffer = await renderEventSlide({
       image,
       date: formatDateKicker(event.startAt.toISOString(), school.timezone),

@@ -22,6 +22,7 @@ import {
   POST_STATUSES,
   POST_TYPES,
   PROCESSING_STATUSES,
+  ASSET_CLASSIFICATIONS,
   SOURCE_CATEGORIES,
   SOURCE_HEALTH_STATUSES,
   SOURCE_TYPES,
@@ -35,6 +36,7 @@ import {
 
 // ── enums ──────────────────────────────────────────────────────────
 export const sourceTypeEnum = pgEnum("source_type", SOURCE_TYPES);
+export const assetClassificationEnum = pgEnum("asset_classification", ASSET_CLASSIFICATIONS);
 export const adapterTypeEnum = pgEnum("adapter_type", ADAPTER_TYPES);
 export const sourceHealthStatusEnum = pgEnum("source_health_status", SOURCE_HEALTH_STATUSES);
 export const entityTypeEnum = pgEnum("entity_type", ENTITY_TYPES);
@@ -353,6 +355,9 @@ export const events = pgTable("events", {
   organization: text("organization"),
   sourceUrl: text("source_url"),
   sourceName: text("source_name"),
+  /** Legacy single-image field: whatever the first reporting source had.
+   * Retained so existing rows keep rendering; `canonicalAssetId` is what
+   * new code reads, because it is chosen across every linked source. */
   sourceImage: text("source_image"),
   originalRawContentId: uuid("original_raw_content_id")
     .notNull()
@@ -367,6 +372,11 @@ export const events = pgTable("events", {
   verificationStatus: verificationStatusEnum("verification_status").notNull().default("needs_review"),
   status: eventStatusEnum("status").notNull().default("candidate"),
   flags: jsonb("flags").notNull().default([]).$type<string[]>(),
+  /** The winning asset among every candidate from every linked source.
+   * Nullable: an event with no artwork anywhere renders a generated
+   * placeholder, which is deliberately *not* stored as a candidate so it
+   * can never be mistaken for something a source published. */
+  canonicalAssetId: uuid("canonical_asset_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -388,6 +398,62 @@ export const eventSources = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.eventId, table.rawContentId] }),
+  }),
+);
+
+// ── flyer / artwork candidates ────────────────────────────────────
+/**
+ * Every image any source offered for an event, kept as candidates so the
+ * best one can be chosen — and re-chosen — across all of them.
+ *
+ * This lives at the *canonical event* level on purpose. The bug it exists
+ * to prevent is subtle: one source reports an event with no image, the
+ * renderer sees nothing and generates a placeholder, while a second source
+ * reporting the same event had the promoter's actual flyer the whole time.
+ * Per-source artwork cannot see that; per-event artwork can.
+ *
+ * Candidates are never deleted when a better one arrives. Provenance is
+ * the point — which source offered which image is how a wrong flyer gets
+ * traced back later.
+ */
+export const assetCandidates = pgTable(
+  "asset_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schoolId: uuid("school_id")
+      .notNull()
+      .references(() => schools.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    /** Which source offered it, and in which observation. */
+    sourceId: uuid("source_id").references(() => sources.id, { onDelete: "set null" }),
+    rawContentId: uuid("raw_content_id").references(() => rawContent.id, { onDelete: "set null" }),
+
+    sourceUrl: text("source_url").notNull(),
+    /** Set once we have copied it into our own storage. */
+    storageUrl: text("storage_url"),
+    width: integer("width"),
+    height: integer("height"),
+    mime: text("mime"),
+    /** Perceptual hash — lets the same flyer arriving from three sources be
+     * recognised as one image rather than three, and lets a higher-res copy
+     * be spotted as the *same* artwork rather than a different one. */
+    perceptualHash: text("perceptual_hash"),
+
+    classification: assetClassificationEnum("classification").notNull().default("unknown"),
+    /** True only when the offering source is authoritative for this event. */
+    isOfficial: boolean("is_official").notNull().default(false),
+    isAiGenerated: boolean("is_ai_generated").notNull().default(false),
+    confidence: real("confidence").notNull().default(0),
+    /** Where in the page it came from: jsonld, opengraph, hero, api, … */
+    origin: text("origin"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // The same image offered twice by one source is one candidate.
+    uniqueIdx: uniqueIndex("asset_candidate_event_url_idx").on(table.eventId, table.sourceUrl),
   }),
 );
 

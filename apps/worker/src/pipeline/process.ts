@@ -23,6 +23,7 @@ import {
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles, isCampusAffiliated } from "../lib/geo-heuristic.js";
 import { log } from "../lib/log.js";
+import { recordObservationImage } from "./event-assets.js";
 
 export interface ProcessSummary {
   inspected: number;
@@ -186,6 +187,7 @@ export async function processSchoolRawContent(
           source,
           extracted,
           parsedStartAt: parsedDates.startAt,
+          mediaUrl: raw.mediaUrl,
         });
         await db
           .update(rawContent)
@@ -250,6 +252,17 @@ export async function processSchoolRawContent(
         rawContentId: raw.id,
         sourceId: source.id,
         sourceUrl: raw.sourceUrl,
+      });
+
+      // Offer this observation's image as a candidate rather than fixing it
+      // as the event's artwork — a later source reporting the same event
+      // may have the promoter's real flyer.
+      await recordObservationImage({
+        schoolId,
+        eventId: event.id,
+        sourceId: source.id,
+        rawContentId: raw.id,
+        mediaUrl: raw.mediaUrl,
       });
 
       await db
@@ -326,6 +339,8 @@ interface MergeArgs {
   school: typeof schools.$inferSelect;
   existingEventId: string;
   rawContentId: string;
+  /** Image this observation carried, offered as an asset candidate. */
+  mediaUrl?: string | null;
   source: typeof sources.$inferSelect;
   extracted: {
     event_name: string | null;
@@ -356,6 +371,17 @@ async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
     rawContentId,
     sourceId: source.id,
     sourceUrl: null,
+  });
+
+  // The merge case is where artwork most often improves: a second source
+  // reporting an event we already know is exactly when the promoter's own
+  // flyer tends to arrive. Re-selection happens inside.
+  await recordObservationImage({
+    schoolId,
+    eventId: existingEventId,
+    sourceId: source.id,
+    rawContentId,
+    mediaUrl: args.mediaUrl ?? null,
   });
 
   const links = await db

@@ -10,3 +10,4 @@ export * from "./logic/lanes.js";
 export * from "./logic/selection.js";
 export * from "./logic/source-health.js";
 export * from "./logic/entities.js";
+export * from "./logic/assets.js";

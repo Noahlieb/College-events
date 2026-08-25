@@ -70,6 +70,22 @@ export const DISCOVERY_CANDIDATE_STATUSES = [
 ] as const;
 export type DiscoveryCandidateStatus = (typeof DISCOVERY_CANDIDATE_STATUSES)[number];
 
+/**
+ * What an image actually is. The distinction that matters is between art
+ * made *for this event* and art that merely appears near it — an
+ * organization's logo is not a flyer, and treating it as one would give
+ * every club meeting a "flyer" that is really just the club's badge.
+ */
+export const ASSET_CLASSIFICATIONS = [
+  "flyer", // purpose-made promotional art for this event
+  "event_art", // official imagery for the event, not a flyer per se
+  "photo", // a photograph associated with the event
+  "logo", // organization/venue branding — never event-specific
+  "generated", // produced by us when nothing official exists
+  "unknown",
+] as const;
+export type AssetClassification = (typeof ASSET_CLASSIFICATIONS)[number];
+
 export const SOURCE_TYPES = [
   "instagram",
   "owl_central",
