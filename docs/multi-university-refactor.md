@@ -94,26 +94,38 @@ All seven stages landed. Test count went 168 → 380 across the same suites.
 
 No step involves writing code.
 
-### Known gaps
+### Known gaps (updated after the follow-up pass)
 
-Real and deliberate, not oversights:
+The follow-up pass closed most of the original list. What's still true:
 
-- **Adapters exist for `campuslabs`, `posh`, `sidearm`, `ical`, `rss`, `jsonld`/`generic_web`.**
-  `campusgroups`, `localist`, `25live`, `eventbrite`, `luma`, `partiful`, `tixr` and
-  `ticketmaster` are *fingerprinted but not yet crawlable* — `adapterFor()` returns null and the
-  source reports `no_adapter` rather than failing. Each is now a self-contained addition.
-- **No real `WebDiscoveryProvider` is wired in.** The interface and a fixture provider exist;
-  nothing paid is hardcoded, and the null provider returns nothing rather than throwing.
-- **The discovery miss rate has no probe behind it yet.** It counts candidates whose
-  `discovery_method` is `discovery_miss`, and nothing writes that value — it needs a job
-  comparing discovered events against what registered sources reported. The metric returns
-  `null` ("unmeasured") rather than a falsely clean 0%.
 - **`external_social` has no push endpoint yet.** The source type, adapter slot and registry
-  representation exist; the authenticated ingestion endpoint does not.
-- **Perceptual hashing has a column but no implementation**, so the same flyer arriving from two
-  sources is two candidates rather than one recognised image.
+  representation exist; the authenticated ingestion endpoint a future connector would call
+  does not.
+- **No production `WebDiscoveryProvider` has run against live traffic.** Brave and Google CSE
+  are implemented, tested, and selected by `DISCOVERY_PROVIDER` + an API key — but this sandbox
+  has neither configured, so nothing here has made a real outbound search call. See the UCF
+  validation test for exactly what *was* exercised instead.
+- **Two adapter types remain unimplemented by design**: `external_social` (push-only, never
+  scraped) and `manual` (hand entry / CSV, not a crawl target). Every other fingerprinted
+  platform — 17 of 19 — is now crawlable, tracked by a registry test that fails if a new
+  fingerprint rule ships without an adapter to back it.
+- **Regeneration triggers are limited to name/category/date.** `artworkInputFingerprint`
+  deliberately ignores description and venue changes to avoid discarding an approved image over
+  a copy-edit; an operator who wants a refresh for another reason uses `--force`.
+- **The discovery-miss probe's date extraction is narrow on purpose.** It reads named/abbreviated
+  months and numeric dates from search snippets and returns `null` rather than guess wrong;
+  events discovered with no readable date are matched on title similarity alone within the
+  probe's lookahead window.
 
-## Non-goals / constraints
+Resolved since the original list: real Brave/Google discovery providers; 17 platform adapters
+with an explicit `SUPPORTED / NO_ADAPTER / AUTH_REQUIRED / DEGRADED / BLOCKED / DISABLED` status
+model; perceptual hashing (dHash via sharp) with copy-vs-image grouping; full per-source-linked
+asset aggregation actually wired into ingestion (it previously wasn't called at all); a real
+`EventArtworkGenerator` interface with OpenAI and deterministic implementations behind a
+programmatically-enforced gate; a real discovery-miss probe with a run-log denominator and
+source recommendations; and a second-university validation suite for UCF.
+
+## Non-goals / constraints## Non-goals / constraints
 
 - No CAPTCHA, Cloudflare, or auth bypass. Posh becomes a **degraded-capable**
   adapter: when challenged it records `DEGRADED` + reason, stops retrying,
