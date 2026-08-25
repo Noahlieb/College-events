@@ -1,9 +1,13 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db, sources } from "@college-events/db";
 import { getCurrentSchool } from "@/lib/current-school";
-import { importCsvAction } from "@/lib/actions";
+import { ImportCsvForm } from "@/components/ImportCsvForm";
 
 export const dynamic = "force-dynamic";
+// A few hundred rows means a few hundred sequential submitManualEvent()
+// calls — comfortably past the platform's default function timeout. See
+// the same reasoning on the Sources page's Discover Sources button.
+export const maxDuration = 300;
 
 interface CsvImportSummary {
   totalRows: number;
@@ -141,30 +145,7 @@ export default async function ImportPage({
         <div className="panel-header">
           <h2>Upload a CSV</h2>
         </div>
-        <form action={importCsvAction} style={{ padding: 16 }} encType="multipart/form-data">
-          <label>CSV file</label>
-          <input type="file" name="csvFile" accept=".csv" required />
-          <label>Submitted by (optional)</label>
-          <input type="text" name="submittedBy" placeholder="your name or team" />
-          {manualSources.length > 1 && (
-            <>
-              <label>Source</label>
-              <select name="sourceName" defaultValue="">
-                <option value="">Default ({manualSources[0]!.name})</option>
-                {manualSources.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <div style={{ marginTop: 14 }}>
-            <button className="btn btn-primary" type="submit">
-              Import CSV
-            </button>
-          </div>
-        </form>
+        <ImportCsvForm manualSources={manualSources} />
       </div>
 
       <div className="panel">
