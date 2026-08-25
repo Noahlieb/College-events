@@ -277,20 +277,29 @@ export class UniversitySourceDiscoveryService {
       return null;
     }
 
-    const existing = byUrl.get(canonical);
+    // A page that merely *links* an RSS/iCal alternate is not itself the
+    // feed — the rss/ical adapters fetch this URL and parse it as that
+    // format, so pointing them at the page would get HTML back and find
+    // nothing, forever, without ever raising an error. Crawl the feed the
+    // page told us about instead of the page we happened to find.
+    const effectiveUrl = fingerprint.feedUrl ? canonicalizeUrl(fingerprint.feedUrl) : canonical;
+    if (effectiveUrl !== canonical && known.has(effectiveUrl)) return null; // already a source
+
+    const existing = byUrl.get(effectiveUrl);
     // The same URL can answer several queries. Keep the best-evidenced
     // reading rather than whichever query happened to run last.
     if (existing && existing.confidence >= fingerprint.confidence) return existing;
 
     const candidate: DiscoveredSourceCandidate = {
       name: titleFor(result),
-      url: canonical,
+      url: effectiveUrl,
       detectedAdapter: fingerprint.adapterType,
       detectedEntityType: query.entityType,
       confidence: fingerprint.confidence,
       evidence: [
         `found by ${query.coverageCategory} query: ${query.query}`,
         ...fingerprint.evidence,
+        ...(effectiveUrl !== canonical ? [`resolved to its feed at ${effectiveUrl}`] : []),
         ...(offDomain
           ? [
               `off ${university.primaryDomain} — kept because ${
@@ -313,7 +322,7 @@ export class UniversitySourceDiscoveryService {
         !offDomain,
     };
 
-    byUrl.set(canonical, candidate);
+    byUrl.set(effectiveUrl, candidate);
     if (opts.onCandidate) {
       try {
         await opts.onCandidate(candidate);

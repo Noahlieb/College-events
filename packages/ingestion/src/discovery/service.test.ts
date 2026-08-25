@@ -270,6 +270,30 @@ describe("UniversitySourceDiscoveryService", () => {
     });
     expect(summary.candidates[0]!.detectedAdapter).toBe("localist");
   });
+
+  it("stores a linked RSS feed's own URL, not the page it was found on", async () => {
+    // The bug this guards against: a category page that merely links an
+    // RSS alternate got stored as an "rss" source pointed at the page
+    // itself. The rss adapter would then fetch HTML, parse zero items out
+    // of it, and report the source healthy forever while finding nothing.
+    const provider = new FixtureDiscoveryProvider({
+      "site:ucf.edu events": [
+        { title: "Social Events", url: "https://events.ucf.edu/category/social-event" },
+      ],
+    });
+    const fetchImpl = (async () =>
+      new Response(
+        `<link rel="alternate" type="application/rss+xml" title="RSS Feed" href="/feed.rss">`,
+      )) as unknown as typeof fetch;
+    const summary = await new UniversitySourceDiscoveryService(provider).discover(UCF, {
+      fetchPages: true,
+      fetchImpl,
+    });
+    const candidate = summary.candidates.find((c) => c.detectedAdapter === "rss")!;
+    expect(candidate).toBeDefined();
+    expect(candidate.url).toBe("https://events.ucf.edu/feed.rss");
+    expect(candidate.evidence.join(" ")).toMatch(/resolved to its feed at https:\/\/events\.ucf\.edu\/feed\.rss/);
+  });
 });
 
 describe("UniversitySourceDiscoveryService — onCandidate (incremental persistence)", () => {

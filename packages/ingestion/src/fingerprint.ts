@@ -21,6 +21,15 @@ export interface Fingerprint {
   /** 0..1. Above AUTO_APPROVE_CONFIDENCE a candidate may skip review. */
   confidence: number;
   evidence: string[];
+  /**
+   * The feed's own URL, when the evidence for `rss`/`ical` came from a
+   * `<link rel="alternate">` on an ordinary page rather than the fetched
+   * document itself being a feed. The page that links to a feed is not the
+   * feed — crawling the page URL with the rss/ical adapter would fetch HTML
+   * and silently find zero items every run. Callers that create a source
+   * from this fingerprint should crawl this URL, not the one they fetched.
+   */
+  feedUrl?: string;
 }
 
 /** Confidence at or above which a candidate can be auto-approved. */
@@ -30,6 +39,9 @@ interface Signal {
   adapterType: AdapterType;
   confidence: number;
   evidence: string;
+  /** See `Fingerprint.feedUrl` — only set when this signal points at a
+   * different URL than the one being fingerprinted. */
+  feedUrl?: string;
 }
 
 /** Host-based rules. A platform's own domain is the strongest signal there
@@ -85,15 +97,58 @@ function detectFeedDocument(body: string): Signal | null {
   return null;
 }
 
-/** A linked alternate feed is a strong hint even on an ordinary page. */
-function detectLinkedFeeds(body: string): Signal[] {
+/** The `href` of the first `<link>` tag whose attributes match `typeMatch`,
+ * regardless of attribute order. */
+function hrefOfLinkedFeed(body: string, typeMatch: RegExp): string | null {
+  const linkTags = body.match(/<link\b[^>]*>/gi) ?? [];
+  for (const tag of linkTags) {
+    if (!typeMatch.test(tag)) continue;
+    const href = tag.match(/href=["']([^"']+)["']/i)?.[1];
+    if (href) return href;
+  }
+  return null;
+}
+
+function resolveAgainst(href: string, baseUrl: string): string | undefined {
+  try {
+    return new URL(href, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A linked alternate feed is a strong hint even on an ordinary page — but
+ * the page itself is not the feed. `baseUrl` (the page actually fetched) is
+ * required to resolve a relative `href` into the real feed URL a crawler
+ * needs, which is carried on the signal as `feedUrl` rather than discarded.
+ */
+function detectLinkedFeeds(body: string, baseUrl: string): Signal[] {
   const out: Signal[] = [];
-  if (/<link[^>]+type=["']application\/rss\+xml["']/i.test(body)) {
-    out.push({ adapterType: "rss", confidence: 0.6, evidence: "page links an RSS alternate" });
+
+  const rssHref = hrefOfLinkedFeed(body, /type=["']application\/rss\+xml["']/i);
+  if (rssHref || /<link[^>]+type=["']application\/rss\+xml["']/i.test(body)) {
+    out.push({
+      adapterType: "rss",
+      confidence: 0.6,
+      evidence: "page links an RSS alternate",
+      feedUrl: rssHref ? resolveAgainst(rssHref, baseUrl) : undefined,
+    });
   }
-  if (/<link[^>]+type=["']text\/calendar["']|href=["'][^"']+\.ics["']/i.test(body)) {
-    out.push({ adapterType: "ical", confidence: 0.6, evidence: "page links an iCalendar feed" });
+
+  const icsHref =
+    hrefOfLinkedFeed(body, /type=["']text\/calendar["']/i) ??
+    body.match(/href=["']([^"']+\.ics)["']/i)?.[1] ??
+    null;
+  if (icsHref) {
+    out.push({
+      adapterType: "ical",
+      confidence: 0.6,
+      evidence: "page links an iCalendar feed",
+      feedUrl: resolveAgainst(icsHref, baseUrl),
+    });
   }
+
   return out;
 }
 
@@ -163,7 +218,7 @@ export function fingerprintUrl(url: string, body?: string): Fingerprint {
   if (body) {
     const feed = detectFeedDocument(body);
     if (feed) signals.push(feed);
-    signals.push(...detectLinkedFeeds(body));
+    signals.push(...detectLinkedFeeds(body, url));
     for (const rule of HTML_RULES) {
       if (rule.pattern.test(body)) {
         signals.push({ adapterType: rule.adapterType, confidence: rule.confidence, evidence: rule.label });
@@ -201,7 +256,12 @@ export function fingerprintUrl(url: string, body?: string): Fingerprint {
     }
     confidence = Math.min(0.99, confidence);
     if (!best || confidence > best.confidence) {
-      best = { adapterType, confidence, evidence: sorted.map((s) => s.evidence) };
+      best = {
+        adapterType,
+        confidence,
+        evidence: sorted.map((s) => s.evidence),
+        feedUrl: sorted.find((s) => s.feedUrl)?.feedUrl,
+      };
     }
   }
   return best!;

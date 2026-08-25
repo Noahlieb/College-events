@@ -68,6 +68,58 @@ describe("fingerprintUrl — page markers", () => {
     expect(fp.adapterType).toBe("sidearm");
   });
 
+});
+
+describe("fingerprintUrl — linked feeds resolve to their own URL, not the page", () => {
+  // A page that links an alternate feed is not the feed. Crawling the page
+  // URL with the rss/ical adapter fetches HTML, parses zero items out of
+  // it, and — because that's not an error — reports the source healthy
+  // forever while it silently finds nothing.
+  it("resolves an RSS alternate's href against the page it was found on", () => {
+    const html = `<html><head><link rel="alternate" type="application/rss+xml" title="RSS Feed" href="/feed.rss"></head></html>`;
+    const fp = fingerprintUrl("https://events.ucf.edu/category/social-event", html);
+    expect(fp.adapterType).toBe("rss");
+    expect(fp.feedUrl).toBe("https://events.ucf.edu/feed.rss");
+  });
+
+  it("leaves feedUrl absolute hrefs untouched", () => {
+    const html = `<link rel="alternate" type="application/rss+xml" href="https://events.ucf.edu/feed.rss">`;
+    const fp = fingerprintUrl("https://events.ucf.edu/upcoming", html);
+    expect(fp.feedUrl).toBe("https://events.ucf.edu/feed.rss");
+  });
+
+  it("resolves a linked iCalendar feed the same way", () => {
+    const html = `<link rel="alternate" type="text/calendar" title="ICS Feed" href="/feed.ics">`;
+    const fp = fingerprintUrl("https://events.ucf.edu/upcoming", html);
+    expect(fp.adapterType).toBe("ical");
+    expect(fp.feedUrl).toBe("https://events.ucf.edu/feed.ics");
+  });
+
+  it("does not set feedUrl when the page has no link tag, only a bare .ics href", () => {
+    // The looser bare-href fallback still resolves relative to the page.
+    const html = `<a href="/calendar/export.ics">Subscribe</a>`;
+    const fp = fingerprintUrl("https://events.ucf.edu/upcoming", html);
+    expect(fp.adapterType).toBe("ical");
+    expect(fp.feedUrl).toBe("https://events.ucf.edu/calendar/export.ics");
+  });
+
+  it("does not set feedUrl when the fetched document already is the feed", () => {
+    const fp = fingerprintUrl("https://ucf.edu/events/feed.rss", '<?xml version="1.0"?><rss version="2.0"><channel>');
+    expect(fp.adapterType).toBe("rss");
+    expect(fp.feedUrl).toBeUndefined();
+  });
+
+  it("tolerates an unresolvable href without losing the detection", () => {
+    const html = `<link rel="alternate" type="application/rss+xml" href="   not a url   ">`;
+    // A relative-looking href still resolves against an absolute base, so
+    // use a base that itself can't act as one to force resolution to fail.
+    const fp = fingerprintUrl("not-a-real-url", html);
+    expect(fp.adapterType).toBe("rss");
+    expect(fp.feedUrl).toBeUndefined();
+  });
+});
+
+describe("fingerprintUrl — feed documents", () => {
   it("reads a raw iCalendar document", () => {
     const fp = fingerprintUrl("https://ucf.edu/x", "BEGIN:VCALENDAR\nVERSION:2.0\n");
     expect(fp.adapterType).toBe("ical");
