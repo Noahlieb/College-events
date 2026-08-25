@@ -56,6 +56,10 @@ export const COVERAGE_CATEGORIES: CoverageCategory[] = [
   { key: "career_center", label: "Career Center", entityType: "department", terms: ["career fair events"], firstParty: true, expected: true },
   { key: "entrepreneurship", label: "Entrepreneurship", entityType: "department", terms: ["entrepreneurship events"], firstParty: true, expected: false },
   { key: "orientation", label: "Orientation & traditions", entityType: "department", terms: ["orientation week of welcome", "homecoming"], firstParty: true, expected: true },
+  { key: "theater", label: "Theater", entityType: "department", terms: ["theatre department productions"], firstParty: true, expected: false },
+  { key: "colleges", label: "Individual colleges", entityType: "department", terms: ["college of business events", "college of engineering events"], firstParty: true, expected: false },
+  { key: "departments", label: "Academic departments", entityType: "department", terms: ["department seminar series"], firstParty: true, expected: false },
+  { key: "campus_venues", label: "Campus venues", entityType: "venue", terms: ["arena stadium events", "auditorium events"], firstParty: true, expected: false },
   { key: "ticket_office", label: "University ticket office", entityType: "venue", terms: ["tickets box office"], firstParty: true, expected: false },
 
   // ── local / nightlife ────────────────────────────────────────────
@@ -71,6 +75,8 @@ export const COVERAGE_CATEGORIES: CoverageCategory[] = [
   { key: "parks_rec", label: "Parks & Recreation", entityType: "organization", terms: ["parks and recreation events"], firstParty: false, expected: false },
   { key: "downtown_district", label: "Downtown district", entityType: "organization", terms: ["downtown events"], firstParty: false, expected: false },
   { key: "tourism_bureau", label: "Tourism bureau", entityType: "organization", terms: ["visitors bureau events"], firstParty: false, expected: false },
+  { key: "regional_calendar", label: "Regional event calendar", entityType: "organization", terms: ["things to do this weekend"], firstParty: false, expected: false },
+  { key: "entertainment_venues", label: "Entertainment venues", entityType: "venue", terms: ["entertainment venue events", "event space"], firstParty: false, expected: false },
 ];
 
 /** Ticketing/nightlife platforms worth probing for a university's area. */
@@ -84,6 +90,22 @@ export const PLATFORM_PROBES = [
   "Tixr",
   "Ticketmaster",
   "AXS",
+];
+
+/**
+ * Queries that pair the school's *abbreviation* with a local scene term.
+ *
+ * Students say "UCF nightlife", not "nightlife near Orlando, Florida" —
+ * and the venues that court them say it too, in their page titles. These
+ * surface college-facing venues that a purely geographic query buries
+ * under general city nightlife.
+ */
+export const ABBREVIATION_SCENE_TERMS = [
+  "college night",
+  "student night",
+  "nightlife",
+  "bars near campus",
+  "events this weekend",
 ];
 
 /** Campus platforms worth naming explicitly — they are what an adapter reads. */
@@ -141,6 +163,22 @@ export function buildDiscoveryQueries(university: UniversityProfile): DiscoveryQ
     queries.push({
       query: `${platform} events ${place}`,
       coverageCategory: "ticketed_venues",
+      entityType: "venue",
+    });
+    // Platform pages built for this specific student body — an Eventbrite
+    // organizer running "UCF" nights is a better source than the city's
+    // general Eventbrite listings.
+    queries.push({
+      query: `${platform} "${university.shortName}"`,
+      coverageCategory: "ticketed_venues",
+      entityType: "venue",
+    });
+  }
+
+  for (const term of ABBREVIATION_SCENE_TERMS) {
+    queries.push({
+      query: `"${university.shortName}" ${term}`,
+      coverageCategory: "college_bars",
       entityType: "venue",
     });
   }

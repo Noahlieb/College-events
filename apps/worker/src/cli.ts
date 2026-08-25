@@ -5,6 +5,7 @@ import { resolveSchoolId } from "./lib/resolve-school.js";
 import { ingestSchoolSources } from "./pipeline/ingest.js";
 import { sourceReport } from "./pipeline/source-report.js";
 import { tickScheduler } from "./pipeline/crawl-scheduler.js";
+import { discoverUniversitySources } from "./pipeline/discover.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
@@ -29,6 +30,8 @@ Usage: pnpm --filter @college-events/worker start <command> [args]
 Commands:
   ingest [school]                          Crawl every active source through its adapter and write
                                             what they find straight into raw_content
+  discover [school]                        Search this university's ecosystem, fingerprint what
+                                            comes back, and store reviewable source candidates
   crawl [school]                           Enqueue every source whose next run is due and work the
                                             queue with bounded concurrency; failures stay contained
                                             to their own job
@@ -95,6 +98,18 @@ async function main() {
         console.log(
           `  ${run.health.padEnd(8)} ${run.sourceName} [${run.adapterType ?? "no adapter"}] ` +
             `+${run.discovered} new / ${run.itemsSeen} seen${run.reason ? ` — ${run.reason}` : ""}`,
+        );
+      }
+      console.log(summary);
+      break;
+    }
+    case "discover": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const summary = await discoverUniversitySources(schoolId);
+      if (!summary.configured) {
+        console.log(
+          "No search provider configured — set DISCOVERY_PROVIDER (brave|google_cse) and its key.\n" +
+            "Discovery is a safety net over the sources you already have, so this is not an error.",
         );
       }
       console.log(summary);

@@ -7,8 +7,8 @@ import { db, schools, sourceDiscoveryCandidates, sources } from "@college-events
 import {
   COVERAGE_CATEGORIES,
   UniversitySourceDiscoveryService,
+  createDiscoveryProvider,
   fingerprintUrl,
-  nullDiscoveryProvider,
 } from "@college-events/ingestion";
 import type { AdapterType } from "@college-events/core";
 import { getCurrentSchool, SCHOOL_COOKIE } from "./current-school";
@@ -82,7 +82,11 @@ export async function discoverSourcesAction() {
     .from(sources)
     .where(eq(sources.schoolId, school.id));
 
-  const service = new UniversitySourceDiscoveryService(nullDiscoveryProvider);
+  // Which index answers is a deployment concern, read from the
+  // environment here and never sent to the browser. With nothing
+  // configured this is the null provider and the run finds nothing —
+  // which is a legible outcome, not a failure.
+  const service = new UniversitySourceDiscoveryService(createDiscoveryProvider());
   const summary = await service.discover(
     {
       name: school.name,
@@ -91,7 +95,13 @@ export async function discoverSourcesAction() {
       city: school.city,
       state: school.state,
     },
-    { knownUrls: known.flatMap((s) => [s.url, s.discoveryUrl].filter((u): u is string => !!u)) },
+    {
+      knownUrls: known.flatMap((s) => [s.url, s.discoveryUrl].filter((u): u is string => !!u)),
+      // Fetch each candidate so fingerprinting sees the real page. Slower,
+      // but a platform identified from markup is worth far more to a
+      // reviewer than one guessed from a URL — and this runs rarely.
+      fetchPages: true,
+    },
   );
 
   for (const candidate of summary.candidates) {
