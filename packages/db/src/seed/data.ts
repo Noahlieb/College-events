@@ -101,17 +101,28 @@ export interface SeedSource {
 export const FAU_SOURCES: SeedSource[] = [
   // The 3 active sources — do not flip these to active:false.
   { key: "fau_athletics", name: "FAU Athletics (fausports.com)", sourceType: "athletics", adapterType: "sidearm", category: "campus", url: "https://fausports.com", priority: 9, scrapeFrequencyMinutes: 240 },
-  // Fed by an external daily scraper (scrape_owlcentral.py, run outside this repo) hitting Owl
-  // Central's JSON API and importing via `import-csv ... --source="Owl Central (CSV Import)"` —
-  // kept separate from the native ical owl_central source below (which polls the .ics feed
-  // directly, and is inactive) since the JSON API carries richer fields and isn't page-capped.
-  { key: "owl_central_csv", name: "Owl Central (CSV Import)", sourceType: "manual_submission", adapterType: "manual", category: "campus", priority: 8, scrapeFrequencyMinutes: 0 },
-  // Fed by an external daily scraper (scrape_posh.py, run outside this repo) via
-  // `import-csv ... --source="Posh.vip Nightlife"`.
-  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "manual_submission", adapterType: "posh", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440, forceCategory: "nightlife" },
+  // Owl Central is FAU's CampusLabs/Anthology Engage install. It is crawled
+  // directly by the reusable `campuslabs` adapter — the host is the only
+  // school-specific fact, which is why the same adapter serves UCF's Knight
+  // Connect or any other Engage campus with a different `config.host`.
+  //
+  // This replaced `scrape_owlcentral.py → CSV → import-csv`. That route
+  // worked, but it made automated ingestion depend on a Python cron running
+  // somewhere, and pushed every field through a lossy flat-text round trip.
+  { key: "owl_central_csv", name: "Owl Central", sourceType: "university_calendar", adapterType: "campuslabs", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 8, scrapeFrequencyMinutes: 240,
+    config: { host: "fau.campuslabs.com", lookaheadDays: 45, pageSize: 100 } },
+  // Nightlife listings. Crawled from configured event URLs when posh.vip
+  // serves them; when it answers with an anti-bot challenge the source goes
+  // DEGRADED and other nearby sources cover the same events. We do not try
+  // to defeat the challenge.
+  { key: "posh_vip", name: "Posh.vip Nightlife", sourceType: "ticketing_website", adapterType: "posh", category: "nearby", url: "https://posh.vip/explore", priority: 6, scrapeFrequencyMinutes: 1440, forceCategory: "nightlife",
+    config: { eventUrls: [] as string[] } },
 
   // Inactive — superseded by the 3 sources above, kept for reference/rollback.
-  { key: "owl_central", name: "Owl Central", sourceType: "owl_central", adapterType: "campuslabs", category: "campus", url: "https://fau.campuslabs.com/engage/events", priority: 9, scrapeFrequencyMinutes: 240, active: false },
+  // Retained as the documented fallback path (structured API → RSS → iCal →
+  // page extraction). The live source above will use this feed if the API
+  // stops answering; kept as its own row so it can also be enabled alone.
+  { key: "owl_central", name: "Owl Central (iCal feed)", sourceType: "ical", adapterType: "ical", category: "campus", url: "https://fau.campuslabs.com/engage/events.ics", priority: 7, scrapeFrequencyMinutes: 360, active: false },
   { key: "culture_room", name: "Culture Room", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://www.cultureroom.net/", priority: 6, scrapeFrequencyMinutes: 720, active: false },
   { key: "wharf_ftl", name: "The Wharf Fort Lauderdale", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://wharfftl.com/events/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
   { key: "revolution_live", name: "Revolution Live", sourceType: "venue_website", adapterType: "generic_web", category: "nearby", url: "https://www.jointherevolution.net/concerts/", priority: 5, scrapeFrequencyMinutes: 720, active: false },
@@ -120,6 +131,9 @@ export const FAU_SOURCES: SeedSource[] = [
   { key: "fau_union_ig", name: "@fauunion (Student Union)", sourceType: "instagram", adapterType: "external_social", category: "instagram_watchlist", instagramHandle: "fauunion", priority: 6, scrapeFrequencyMinutes: 180, active: false },
   { key: "sofla_nightlife_ig", name: "@sofla.nightlife (promoter)", sourceType: "instagram", adapterType: "external_social", category: "instagram_watchlist", instagramHandle: "sofla.nightlife", priority: 4, scrapeFrequencyMinutes: 360, active: false },
   // Utility source manual entries attach to — treated as authoritative since a human verified the details.
+  // What hand-entered events and admin CSV uploads attach to. CSV is no
+  // longer an automated integration path — it is an operator tool — so this
+  // is the source those rows land on.
   { key: "manual_entry", name: "Manual Entry (VA / Team Submissions)", sourceType: "manual_submission", adapterType: "manual", category: "campus", priority: 8, scrapeFrequencyMinutes: 0, active: false },
 ];
 

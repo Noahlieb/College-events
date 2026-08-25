@@ -1,18 +1,27 @@
-# Scrapers
+# Scrapers (legacy / manual fallback)
 
-Two Python scrapers that feed College-events. Both write a
+> **These are no longer part of automated ingestion.** Owl Central and
+> posh.vip are crawled directly by the reusable `campuslabs` and `posh`
+> adapters in `packages/ingestion`, driven by rows in the `sources` table.
+> The daily workflow runs `pnpm worker ingest` and touches no Python.
+>
+> They are kept for two reasons: as a manual fallback when a platform stops
+> answering the adapter, and because `scrape_posh.py --headed` remains the
+> only way to reach posh.vip listings when the site is challenging
+> automated requests. Their CSV output feeds `import-csv`, which is now an
+> **operator tool** rather than an integration boundary.
+>
+> Adding a university does **not** mean adding a script here. See
+> `docs/multi-university-refactor.md`.
+
+Two Python scrapers that predate the adapter architecture. Both write a
 `college_events_import_*.csv` in the exact shape `apps/worker`'s
 `import-csv` command expects (see `packages/ingestion/src/csv-events.ts`).
 
-They live here rather than in a separate repo so the daily GitHub Actions
-workflow (`.github/workflows/daily.yml`) can run them on a schedule — when
-they ran only on a laptop via cron, fresh data depended on that laptop
-being awake.
-
 | Script | Source | Needs a browser? | Runs in CI? |
 |---|---|---|---|
-| `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | Yes |
-| `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
+| `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | **No — superseded by the `campuslabs` adapter** |
+| `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — challenged, see below** |
 
 ## posh.vip: two separate problems, one fixed
 

@@ -4,6 +4,8 @@ export * from "./ical.js";
 export * from "./rss.js";
 export * from "./jsonld.js";
 export * from "./sidearm.js";
+export * from "./campuslabs.js";
+export * from "./posh.js";
 export * from "./phantombuster.js";
 export * from "./phantombuster-client.js";
 export * from "./manual.js";

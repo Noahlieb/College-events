@@ -1,7 +1,13 @@
 name: Daily pipeline
 
-# Scrape all three sources, process what they found, rebuild the next four
+# Crawl every active source, process what they found, rebuild the next four
 # weeks of posts, and re-render them — every morning at 8:00 America/New_York.
+#
+# Sources are crawled through the shared ingestion service, which resolves
+# each source's adapter from `sources.adapter_type`. Adding a university, or
+# a new source for an existing one, changes rows in the database — not this
+# file. The only Python left here is Owl Central's legacy scraper, kept as a
+# manual fallback and no longer part of the automated path.
 #
 # GitHub's cron only speaks UTC, and 8am Eastern is 12:00 UTC in summer but
 # 13:00 UTC in winter. Rather than let the run drift an hour twice a year,
@@ -30,7 +36,6 @@ jobs:
     timeout-minutes: 45
     env:
       SCHOOL: ${{ github.event.inputs.school || 'FAU' }}
-      SCRAPE_DIR: ${{ github.workspace }}/.scrape-output
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -65,136 +70,49 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: actions/setup-python@v5
-        if: steps.gate.outputs.run == 'true'
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: scrapers/requirements.txt
-
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
         run: |
           pnpm install --frozen-lockfile
-          pip install -r scrapers/requirements.txt
-          python -m playwright install --with-deps chromium
 
       - name: Build workspace
         if: steps.gate.outputs.run == 'true'
         run: pnpm --filter "@college-events/worker..." build
 
-      # ── 1. Scrape ────────────────────────────────────────────────────
-      # Each scraper is allowed to fail without taking the run down with
-      # it: one site changing its markup should still leave the other two
-      # sources flowing into today's posts rather than skipping the day.
-      # Failures are surfaced in the summary step at the end.
-      - name: Scrape Owl Central
+      # ── 1. Crawl every adapter-backed source ────────────────────
+      # One step for all sources, at any number of universities. Each
+      # source is isolated inside the service: a failure, or a platform
+      # declining automated access, marks that source and leaves every
+      # other source's events flowing into the day's posts.
+      - name: Crawl sources
         if: steps.gate.outputs.run == 'true'
-        id: owlcentral
-        continue-on-error: true
-        run: python scrapers/scrape_owlcentral.py --out-dir "$SCRAPE_DIR"
-
-      - name: Scrape Posh.vip
-        if: steps.gate.outputs.run == 'true'
-        id: posh
-        continue-on-error: true
-        run: python scrapers/scrape_posh.py --out-dir "$SCRAPE_DIR"
-
-      # ── 2. Import what the scrapers produced ─────────────────────────
-      # Guarded on the file existing so a failed scrape above doesn't turn
-      # into a confusing "file not found" here.
-      # A 0-card scrape still exits 0 (it's a legitimate "nothing new today"
-      # outcome, not always a bug), so the pass/fail step outcome alone can't
-      # be trusted -- upload whatever debug evidence the scraper captured
-      # (screenshot + raw HTML of any page where it found zero cards) so a
-      # bot-detection wall or a real markup change can be told apart without
-      # reproducing it by hand.
-      - name: Upload Posh.vip debug capture
-        if: steps.gate.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: posh-debug-capture
-          path: ${{ env.SCRAPE_DIR }}/debug/
-          if-no-files-found: ignore
-          retention-days: 5
-
-      - name: Import Owl Central CSV
-        if: steps.gate.outputs.run == 'true'
-        continue-on-error: true
-        run: |
-          f="$SCRAPE_DIR/college_events_import_fau_owlcentral.csv"
-          if [ -f "$f" ]; then
-            pnpm worker import-csv "$SCHOOL" "$f" owlcentral-scraper --source="Owl Central (CSV Import)"
-          else
-            echo "No Owl Central CSV produced — skipping import."
-          fi
-
-      - name: Import Posh.vip CSV
-        if: steps.gate.outputs.run == 'true'
-        continue-on-error: true
-        run: |
-          f="$SCRAPE_DIR/college_events_import_$(echo "$SCHOOL" | tr '[:upper:]' '[:lower:]').csv"
-          if [ -f "$f" ]; then
-            pnpm worker import-csv "$SCHOOL" "$f" posh-scraper --source="Posh.vip Nightlife"
-          else
-            echo "No Posh.vip CSV produced — skipping import."
-          fi
-
-      # ── 3. The third source needs no scraper: it has a native adapter ─
-      - name: Ingest adapter-backed sources (FAU Athletics)
-        if: steps.gate.outputs.run == 'true'
-        continue-on-error: true
+        id: crawl
         run: pnpm worker ingest "$SCHOOL"
 
-      # ── 4. Turn raw content into scored, categorized events ──────────
+      # ── 2. Turn raw content into scored, categorized events ──────────
       - name: Process raw content
         if: steps.gate.outputs.run == 'true'
         run: pnpm worker process "$SCHOOL"
 
-      # ── 5. Rebuild this week + the next three ────────────────────────
+      # ── 3. Rebuild this week + the next three ────────────────────────
       - name: Select posts
         if: steps.gate.outputs.run == 'true'
         run: pnpm worker select-posts "$SCHOOL"
 
-      # ── 6. Re-render so previews match the rebuilt event lists ───────
+      # ── 4. Re-render so previews match the rebuilt event lists ───────
       - name: Render posts
         if: steps.gate.outputs.run == 'true'
         run: pnpm worker render-all "$SCHOOL"
 
+      # A source can answer 200 and still return nothing, which looks like a
+      # clean run while coverage quietly shrinks. The report reads health
+      # straight from the source registry, so a degraded or silent source is
+      # visible here rather than only in the database.
       - name: Summary
         if: steps.gate.outputs.run == 'true' && always()
         run: |
-          # A scraper step can exit 0 while still having found nothing --
-          # count the rows it actually produced instead of trusting the step
-          # outcome, so a silent zero-event morning doesn't read as a clean
-          # "success" here the way it does in the raw step list above.
-          count_rows() {
-            f="$1"
-            if [ -f "$f" ]; then
-              n=$(($(wc -l < "$f") - 1))
-              [ "$n" -lt 0 ] && n=0
-              echo "$n"
-            else
-              echo 0
-            fi
-          }
-          owl_count=$(count_rows "$SCRAPE_DIR/college_events_import_fau_owlcentral.csv")
-          school_lower=$(echo "$SCHOOL" | tr '[:upper:]' '[:lower:]')
-          posh_count=$(count_rows "$SCRAPE_DIR/college_events_import_$school_lower.csv")
-
           {
             echo "### Daily pipeline — $SCHOOL"
             echo ""
-            echo "| Scraper | Step outcome | Events found |"
-            echo "|---|---|---|"
-            echo "| Owl Central | ${{ steps.owlcentral.outcome }} | $owl_count |"
-            echo "| Posh.vip | ${{ steps.posh.outcome }} | $posh_count |"
-            echo ""
-            if [ -f "$SCRAPE_DIR/posh-blocked.txt" ]; then
-              echo "🚫 **Posh.vip was blocked by Cloudflare** — $(cat "$SCRAPE_DIR/posh-blocked.txt")"
-              echo ""
-              echo "posh.vip runs bot management in front of \`/explore\` and challenges headless browsers regardless of network (confirmed from CI and from a residential connection). This is the site's access control, not a bug — nightlife events need a manual \`--headed\` import (see \`scrapers/README.md\`) or feed access from posh.vip."
-            elif [ "$posh_count" -eq 0 ]; then
-              echo "⚠️ Posh.vip found 0 events without being challenged — the page layout may have changed. Check the \`posh-debug-capture\` artifact for a screenshot/HTML of what the scraper saw."
-            fi
+            pnpm --silent worker source-report "$SCHOOL" || echo "_source report unavailable_"
           } >> "$GITHUB_STEP_SUMMARY"

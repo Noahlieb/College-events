@@ -1,7 +1,7 @@
 import type { DiscoveredItem, FetchContext, SourceAdapter } from "./types.js";
 import { IngestionError } from "./types.js";
 
-interface JsonLdEventLike {
+export interface JsonLdEventLike {
   "@type"?: string | string[];
   name?: string;
   startDate?: string;
@@ -65,7 +65,7 @@ function priceOf(offers: JsonLdEventLike["offers"]): string | null {
   return /^\d+(\.\d+)?$/.test(raw) ? `$${raw}` : raw;
 }
 
-function locationOf(location: JsonLdEventLike["location"]): string | null {
+export function locationOf(location: JsonLdEventLike["location"]): string | null {
   if (!location) return null;
   if (location.name) return location.name;
   if (typeof location.address === "string") return location.address;
@@ -73,14 +73,14 @@ function locationOf(location: JsonLdEventLike["location"]): string | null {
   return null;
 }
 
-function imageOf(image: JsonLdEventLike["image"]): string | null {
+export function imageOf(image: JsonLdEventLike["image"]): string | null {
   if (!image) return null;
   if (typeof image === "string") return image;
   if (Array.isArray(image)) return typeof image[0] === "string" ? image[0] : null;
   return image.url ?? null;
 }
 
-function toDiscoveredItem(node: JsonLdEventLike, pageUrl: string): DiscoveredItem {
+export function jsonLdToDiscoveredItem(node: JsonLdEventLike, pageUrl: string): DiscoveredItem {
   const textParts = [
     node.name,
     node.startDate ? `Start: ${node.startDate}` : null,
@@ -121,7 +121,7 @@ export const genericWebpageAdapter: SourceAdapter = {
     if (!res.ok) throw new IngestionError(`Webpage fetch failed: HTTP ${res.status}`, ctx.source.id);
     const html = await res.text();
     const nodes = extractJsonLdEvents(html);
-    const items = nodes.map((n) => toDiscoveredItem(n, ctx.source.url!));
+    const items = nodes.map((n) => jsonLdToDiscoveredItem(n, ctx.source.url!));
     return ctx.maxItems ? items.slice(0, ctx.maxItems) : items;
   },
 };

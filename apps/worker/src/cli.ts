@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { pool } from "@college-events/db";
 import { resolveSchoolId } from "./lib/resolve-school.js";
 import { ingestSchoolSources } from "./pipeline/ingest.js";
+import { sourceReport } from "./pipeline/source-report.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
@@ -25,7 +26,10 @@ College Events worker CLI
 Usage: pnpm --filter @college-events/worker start <command> [args]
 
 Commands:
-  ingest [school]                          Poll all active adapter-backed sources for new raw_content
+  ingest [school]                          Crawl every active source through its adapter and write
+                                            what they find straight into raw_content
+  source-report [school]                   Markdown table of every source's adapter, health, last
+                                            crawl and last event — what the daily run posts
   ingest:phantombuster <school> <file>     Import a PhantomBuster Instagram scrape JSON file
   ingest:phantombuster-live [school] [agentId]
                                             Launch a PhantomBuster agent via API, wait for it,
@@ -48,6 +52,9 @@ Commands:
   import-csv <school> <file> [submittedBy] [--source="Name"]
                                             Bulk-import events from a CSV (Date, Time, Category,
                                             Event, Presenter/Team, Venue, Notes, Image URL, Link).
+                                            An operator tool, not an automated path: sources are
+                                            crawled by 'ingest'. Use this for one-off backfills and
+                                            hand-curated lists.
                                             --source attributes rows to a specific manual_submission
                                             source by exact name (must already exist); omit to use
                                             the school's oldest manual_submission source.
@@ -63,7 +70,23 @@ async function main() {
     case "ingest": {
       const schoolId = await resolveSchoolId(args[0] ?? "FAU");
       const summary = await ingestSchoolSources(schoolId);
+      // Print the per-source breakdown, not just the totals: a run where
+      // one platform declined access and the rest worked is a different
+      // situation from a run where everything worked, and the totals alone
+      // cannot tell them apart.
+      for (const run of summary.runs) {
+        const detail = run.reason ? ` — ${run.reason}` : "";
+        console.log(
+          `  ${run.health.padEnd(8)} ${run.sourceName} [${run.adapterType ?? "no adapter"}] ` +
+            `+${run.discovered} new / ${run.itemsSeen} seen${detail}`,
+        );
+      }
       console.log(summary);
+      break;
+    }
+    case "source-report": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      console.log(await sourceReport(schoolId));
       break;
     }
     case "ingest:phantombuster": {

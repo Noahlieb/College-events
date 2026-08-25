@@ -110,7 +110,7 @@ export function icsDateToIso(value: string | null): string | null {
   return null;
 }
 
-async function fetchIcsEvents(url: string, fetchImpl: typeof fetch): Promise<IcalEvent[]> {
+export async function fetchIcsEvents(url: string, fetchImpl: typeof fetch): Promise<IcalEvent[]> {
   const res = await fetchImpl(url, { headers: { Accept: "text/calendar, text/plain" } });
   if (!res.ok) {
     throw new Error(`Failed to fetch ICS feed ${url}: HTTP ${res.status}`);
@@ -118,7 +118,7 @@ async function fetchIcsEvents(url: string, fetchImpl: typeof fetch): Promise<Ica
   return parseIcs(await res.text());
 }
 
-function toDiscoveredItem(event: IcalEvent): DiscoveredItem {
+export function toDiscoveredItem(event: IcalEvent): DiscoveredItem {
   const start = icsDateToIso(event.dtstart);
   const end = icsDateToIso(event.dtend);
   const textParts = [

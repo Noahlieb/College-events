@@ -8,3 +8,4 @@ export * from "./logic/dedup.js";
 export * from "./logic/verification.js";
 export * from "./logic/lanes.js";
 export * from "./logic/selection.js";
+export * from "./logic/source-health.js";

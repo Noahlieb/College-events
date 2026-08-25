@@ -71,6 +71,32 @@ describe("FAU source migration", () => {
     expect(athletics.url).toBe("https://fausports.com");
   });
 
+  it("crawls Owl Central directly instead of through a CSV round trip", () => {
+    // Automated ingestion used to depend on a Python cron writing a CSV
+    // somewhere. The platform is now read through the reusable adapter,
+    // with the host as the only school-specific fact.
+    const owl = FAU_SOURCES.find((s) => s.key === "owl_central_csv")!;
+    expect(owl.adapterType).toBe("campuslabs");
+    expect(owl.config?.host).toBe("fau.campuslabs.com");
+    expect(owl.sourceType).not.toBe("manual_submission");
+    // A crawl interval of 0 meant "never polled, fed externally".
+    expect(owl.scrapeFrequencyMinutes).toBeGreaterThan(0);
+  });
+
+  it("keeps the CampusLabs host in config, never in the adapter name", () => {
+    // Rule 2: the same adapter has to serve the next campus unchanged.
+    for (const s of FAU_SOURCES.filter((s) => s.adapterType === "campuslabs")) {
+      expect(s.config?.host).toBeTruthy();
+    }
+  });
+
+  it("keeps a manual source for admin CSV uploads to attach to", () => {
+    // CSV survives as an operator tool; it is just no longer the
+    // automated integration boundary.
+    const manual = FAU_SOURCES.filter((s) => s.sourceType === "manual_submission");
+    expect(manual.length).toBeGreaterThan(0);
+  });
+
   it("routes the nightlife listing through the posh adapter", () => {
     const posh = FAU_SOURCES.find((s) => s.key === "posh_vip")!;
     expect(posh.adapterType).toBe("posh");

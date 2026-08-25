@@ -11,6 +11,8 @@ import { owlCentralAdapter, icalAdapter } from "./ical.js";
 import { rssAdapter } from "./rss.js";
 import { genericWebpageAdapter } from "./jsonld.js";
 import { sidearmAthleticsAdapter } from "./sidearm.js";
+import { campusLabsAdapter } from "./campuslabs.js";
+import { poshAdapter } from "./posh.js";
 
 /**
  * Wraps a pre-existing `SourceAdapter` (the `fetchNew(ctx)` shape) as an
@@ -60,6 +62,10 @@ const FEED_CAPABILITIES: AdapterCapabilities = {
  * here. Entries are only added when a genuinely new *platform* appears.
  */
 const ADAPTERS: EventSourceAdapter[] = [
+  // Native implementations of the new interface.
+  campusLabsAdapter,
+  poshAdapter,
+  // Pre-refactor adapters, bridged rather than rewritten.
   fromLegacyAdapter("sidearm", { ...FEED_CAPABILITIES, assets: true }, sidearmAthleticsAdapter),
   fromLegacyAdapter("ical", FEED_CAPABILITIES, icalAdapter),
   fromLegacyAdapter("rss", FEED_CAPABILITIES, rssAdapter),
