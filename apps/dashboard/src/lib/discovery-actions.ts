@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schools, sourceDiscoveryCandidates, sources } from "@college-events/db";
 import { COVERAGE_CATEGORIES, fingerprintUrl } from "@college-events/ingestion";
 import type { AdapterType } from "@college-events/core";
@@ -123,6 +123,12 @@ export async function addCandidateUrlAction(formData: FormData) {
  *
  * The candidate is kept and marked approved rather than deleted, so the
  * same URL is never re-proposed and there is a record of who accepted what.
+ *
+ * The check above and the insert below are not atomic — a slow request and
+ * an impatient second click can both read "still pending" before either
+ * commits. `onConflictDoNothing` against the (school, url) unique index is
+ * the actual guard: a race lands on the same existing row instead of a
+ * second source silently duplicating the crawl.
  */
 export async function approveCandidateAction(candidateId: string) {
   const [candidate] = await db
@@ -135,7 +141,7 @@ export async function approveCandidateAction(candidateId: string) {
   const category = COVERAGE_CATEGORIES.find((c) => c.key === candidate.coverageCategory);
   const isNearby = category ? !category.firstParty : false;
 
-  const [source] = await db
+  const [inserted] = await db
     .insert(sources)
     .values({
       schoolId: candidate.schoolId,
@@ -157,7 +163,19 @@ export async function approveCandidateAction(candidateId: string) {
       // crawled on the next tick rather than after a full interval.
       nextRunAt: null,
     })
+    .onConflictDoNothing({ target: [sources.schoolId, sources.url] })
     .returning();
+
+  let source = inserted;
+  if (!source) {
+    // Lost the race: a source for this URL already exists. Link the
+    // candidate to it rather than leaving promotedSourceId empty.
+    [source] = await db
+      .select()
+      .from(sources)
+      .where(and(eq(sources.schoolId, candidate.schoolId), eq(sources.url, candidate.url)))
+      .limit(1);
+  }
 
   await db
     .update(sourceDiscoveryCandidates)

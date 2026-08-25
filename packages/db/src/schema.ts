@@ -94,7 +94,9 @@ export const schools = pgTable("schools", {
 export const universities = schools;
 
 // ── sources ────────────────────────────────────────────────────────
-export const sources = pgTable("sources", {
+export const sources = pgTable(
+  "sources",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   schoolId: uuid("school_id")
     .notNull()
@@ -162,7 +164,16 @@ export const sources = pgTable("sources", {
   metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => ({
+    // Same reasoning as source_discovery_candidates' unique index: without
+    // this, approving a candidate twice — a slow response and an impatient
+    // second click, or a re-discovered candidate re-approved — creates a
+    // second source crawling the identical URL, doubling the work and
+    // risking duplicate events downstream.
+    urlIdx: uniqueIndex("sources_school_url_idx").on(table.schoolId, table.url),
+  }),
+);
 
 // ── entity graph (organizations, venues, promoters) ───────────────
 /**

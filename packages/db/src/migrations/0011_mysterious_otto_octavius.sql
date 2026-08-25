@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "sources_school_url_idx" ON "sources" USING btree ("school_id","url");
