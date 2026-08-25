@@ -24,17 +24,59 @@ export interface SchedulerSummary {
 }
 
 /**
+ * A job sitting "queued" or "running" this long is treated as abandoned
+ * rather than merely slow — the worker process that owned it crashed, was
+ * interrupted (Ctrl+C), or the container restarted mid-run. Without this, an
+ * interrupted crawl leaves its jobs stuck open forever, which — because of
+ * the busy check below — permanently blocks their sources from ever being
+ * re-queued. Fifteen minutes is generous next to the per-request fetch
+ * timeout in `runSource`, which bounds any one source's real run time.
+ */
+const STALE_JOB_MINUTES = 15;
+
+/**
+ * Closes out jobs abandoned by a worker that never got to finish them, so
+ * their sources are eligible to be queued again instead of looking "busy"
+ * indefinitely. Returns how many were reaped.
+ */
+export async function reapStaleJobs(schoolId: string, now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_JOB_MINUTES * 60_000);
+  const reaped = await db
+    .update(crawlJobs)
+    .set({
+      status: "failed",
+      finishedAt: now,
+      lastError: `Abandoned — no result recorded within ${STALE_JOB_MINUTES} minutes; the worker that owned this job likely crashed or was interrupted.`,
+    })
+    .where(
+      and(
+        eq(crawlJobs.schoolId, schoolId),
+        or(
+          and(eq(crawlJobs.status, "running"), lte(crawlJobs.startedAt, cutoff)),
+          and(eq(crawlJobs.status, "queued"), lte(crawlJobs.createdAt, cutoff)),
+        ),
+      ),
+    )
+    .returning({ id: crawlJobs.id });
+  return reaped.length;
+}
+
+/**
  * Queues every source whose `next_run_at` has passed.
  *
  * A source already carrying a queued or running job is skipped — otherwise
  * a scheduler tick that overlaps a slow run would stack duplicate jobs for
- * the same source and crawl it twice concurrently.
+ * the same source and crawl it twice concurrently. Stale jobs are reaped
+ * first so a run interrupted on a previous tick doesn't count as "busy"
+ * forever.
  */
 export async function enqueueDueSources(
   schoolId: string,
   now = new Date(),
   limit?: number,
 ): Promise<number> {
+  await reapStaleJobs(schoolId, now);
+
   const candidates = await db
     .select()
     .from(sources)
