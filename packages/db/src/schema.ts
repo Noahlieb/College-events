@@ -244,6 +244,62 @@ export const entitySources = pgTable(
   }),
 );
 
+// ── source discovery candidates ───────────────────────────────────
+/**
+ * Machine-found URLs that might become sources, held for review.
+ *
+ * Discovery is a safety net, not an authority. A search provider returning
+ * a plausible-looking URL is evidence, not a decision — the wrong URL
+ * silently pollutes a university's calendar with another city's events,
+ * which is exactly the failure the posh trending-rail incident produced.
+ * So candidates land here with their fingerprint and its evidence, and a
+ * human (or a high-confidence auto-approval) promotes them to `sources`.
+ */
+export const sourceDiscoveryCandidates = pgTable(
+  "source_discovery_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schoolId: uuid("school_id")
+      .notNull()
+      .references(() => schools.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+
+    /** What the fingerprinter thinks this is, and how sure it is. */
+    detectedAdapter: adapterTypeEnum("detected_adapter"),
+    detectedEntityType: entityTypeEnum("detected_entity_type"),
+    confidence: real("confidence").notNull().default(0),
+    /** Why we believe it — shown to the reviewer. A bare score is not
+     * reviewable; "host matches *.campuslabs.com" is. */
+    evidence: jsonb("evidence").notNull().default([]).$type<string[]>(),
+
+    /** How this candidate surfaced: "search", "university_site",
+     * "manual", "discovery_miss", "entity_link". */
+    discoveryMethod: text("discovery_method").notNull(),
+    /** The coverage category this was sought for, e.g. "student_government",
+     * "athletics", "nightlife" — lets the coverage report say which parts of
+     * a university's ecosystem are still unrepresented. */
+    coverageCategory: text("coverage_category"),
+
+    status: discoveryCandidateStatusEnum("status").notNull().default("pending"),
+    /** Set when a candidate is promoted, so the same URL is not re-proposed. */
+    promotedSourceId: uuid("promoted_source_id").references(() => sources.id, {
+      onDelete: "set null",
+    }),
+    rejectedReason: text("rejected_reason"),
+
+    metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    // One row per URL per university: re-running discovery refreshes a
+    // candidate instead of stacking duplicates for a reviewer to wade
+    // through, and a rejected URL stays rejected.
+    urlIdx: uniqueIndex("discovery_candidate_school_url_idx").on(table.schoolId, table.url),
+  }),
+);
+
 // ── raw content (immutable discovery record) ──────────────────────
 export const rawContent = pgTable(
   "raw_content",

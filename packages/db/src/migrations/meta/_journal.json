@@ -29,6 +29,13 @@
       "when": 1787666586079,
       "tag": "0003_entity_graph",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787666979481,
+      "tag": "0004_discovery_candidates",
+      "breakpoints": true
     }
   ]
 }

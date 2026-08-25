@@ -11,4 +11,6 @@ export * from "./phantombuster-client.js";
 export * from "./manual.js";
 export * from "./csv.js";
 export * from "./csv-events.js";
+export * from "./fingerprint.js";
+export * from "./discovery/index.js";
 export * from "./registry.js";
