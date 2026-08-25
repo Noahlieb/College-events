@@ -79,15 +79,17 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pnpm --filter "@college-events/worker..." build
 
-      # ── 1. Crawl every adapter-backed source ────────────────────
-      # One step for all sources, at any number of universities. Each
-      # source is isolated inside the service: a failure, or a platform
-      # declining automated access, marks that source and leaves every
-      # other source's events flowing into the day's posts.
+      # ── 1. Crawl every source that is due ───────────────────────
+      # The scheduler enqueues one job per due source and works the queue
+      # with bounded concurrency, so a slow or hostile platform holds up
+      # only its own job. This step is a convenience for a single school;
+      # nothing about the model requires the crawl to happen here, which
+      # is the point — it is what lets this stop being one nightly script
+      # once there are more universities than fit in one run.
       - name: Crawl sources
         if: steps.gate.outputs.run == 'true'
         id: crawl
-        run: pnpm worker ingest "$SCHOOL"
+        run: pnpm worker crawl "$SCHOOL"
 
       # ── 2. Turn raw content into scored, categorized events ──────────
       - name: Process raw content

@@ -4,6 +4,7 @@ import { pool } from "@college-events/db";
 import { resolveSchoolId } from "./lib/resolve-school.js";
 import { ingestSchoolSources } from "./pipeline/ingest.js";
 import { sourceReport } from "./pipeline/source-report.js";
+import { tickScheduler } from "./pipeline/crawl-scheduler.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
@@ -28,6 +29,9 @@ Usage: pnpm --filter @college-events/worker start <command> [args]
 Commands:
   ingest [school]                          Crawl every active source through its adapter and write
                                             what they find straight into raw_content
+  crawl [school]                           Enqueue every source whose next run is due and work the
+                                            queue with bounded concurrency; failures stay contained
+                                            to their own job
   source-report [school]                   Markdown table of every source's adapter, health, last
                                             crawl and last event — what the daily run posts
   ingest:phantombuster <school> <file>     Import a PhantomBuster Instagram scrape JSON file
@@ -79,6 +83,18 @@ async function main() {
         console.log(
           `  ${run.health.padEnd(8)} ${run.sourceName} [${run.adapterType ?? "no adapter"}] ` +
             `+${run.discovered} new / ${run.itemsSeen} seen${detail}`,
+        );
+      }
+      console.log(summary);
+      break;
+    }
+    case "crawl": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const summary = await tickScheduler(schoolId);
+      for (const run of summary.results) {
+        console.log(
+          `  ${run.health.padEnd(8)} ${run.sourceName} [${run.adapterType ?? "no adapter"}] ` +
+            `+${run.discovered} new / ${run.itemsSeen} seen${run.reason ? ` — ${run.reason}` : ""}`,
         );
       }
       console.log(summary);

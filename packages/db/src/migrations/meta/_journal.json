@@ -43,6 +43,13 @@
       "when": 1787667402317,
       "tag": "0005_canonical_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787667657761,
+      "tag": "0006_crawl_jobs",
+      "breakpoints": true
     }
   ]
 }

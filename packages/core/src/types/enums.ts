@@ -86,6 +86,16 @@ export const ASSET_CLASSIFICATIONS = [
 ] as const;
 export type AssetClassification = (typeof ASSET_CLASSIFICATIONS)[number];
 
+/** Lifecycle of one queued crawl of one source. */
+export const CRAWL_JOB_STATUSES = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "skipped", // source disabled or removed between enqueue and run
+] as const;
+export type CrawlJobStatus = (typeof CRAWL_JOB_STATUSES)[number];
+
 export const SOURCE_TYPES = [
   "instagram",
   "owl_central",

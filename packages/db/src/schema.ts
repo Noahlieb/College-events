@@ -23,6 +23,7 @@ import {
   POST_TYPES,
   PROCESSING_STATUSES,
   ASSET_CLASSIFICATIONS,
+  CRAWL_JOB_STATUSES,
   SOURCE_CATEGORIES,
   SOURCE_HEALTH_STATUSES,
   SOURCE_TYPES,
@@ -37,6 +38,7 @@ import {
 // ── enums ──────────────────────────────────────────────────────────
 export const sourceTypeEnum = pgEnum("source_type", SOURCE_TYPES);
 export const assetClassificationEnum = pgEnum("asset_classification", ASSET_CLASSIFICATIONS);
+export const crawlJobStatusEnum = pgEnum("crawl_job_status", CRAWL_JOB_STATUSES);
 export const adapterTypeEnum = pgEnum("adapter_type", ADAPTER_TYPES);
 export const sourceHealthStatusEnum = pgEnum("source_health_status", SOURCE_HEALTH_STATUSES);
 export const entityTypeEnum = pgEnum("entity_type", ENTITY_TYPES);
@@ -400,6 +402,68 @@ export const eventSources = pgTable(
     pk: primaryKey({ columns: [table.eventId, table.rawContentId] }),
   }),
 );
+
+// ── crawl jobs and run history ────────────────────────────────────
+/**
+ * One queued crawl of one source.
+ *
+ * The job table exists so that ingestion stops being a single sequential
+ * pass that a slow or hostile source can hold up. A scheduler enqueues
+ * what is due; workers claim jobs independently; a failure is recorded
+ * against its own job and nothing else. Hundreds of universities means
+ * thousands of sources on different intervals, and that only works if the
+ * unit of work is one source rather than one nightly script.
+ *
+ * This is deliberately a table rather than an external queue: at current
+ * volume Postgres is the simpler correct answer, and the data model is
+ * what has to be right now — the executor can be swapped later without
+ * changing what a job *is*.
+ */
+export const crawlJobs = pgTable("crawl_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schoolId: uuid("school_id")
+    .notNull()
+    .references(() => schools.id, { onDelete: "cascade" }),
+  sourceId: uuid("source_id")
+    .notNull()
+    .references(() => sources.id, { onDelete: "cascade" }),
+  status: crawlJobStatusEnum("status").notNull().default("queued"),
+  /** Copied from the source at enqueue time so re-prioritising a source
+   * does not reshuffle work already queued. */
+  priority: integer("priority").notNull().default(5),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * What actually happened on one crawl.
+ *
+ * Separate from the job because the history is the evidence behind source
+ * health: "this source has returned zero events for four runs" is a claim
+ * that needs rows to back it, and it is the claim that catches a source
+ * failing silently while every run reports success.
+ */
+export const sourceRuns = pgTable("source_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceId: uuid("source_id")
+    .notNull()
+    .references(() => sources.id, { onDelete: "cascade" }),
+  jobId: uuid("job_id").references(() => crawlJobs.id, { onDelete: "set null" }),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  /** "ok" | "no_adapter" | "access_denied" | "error" */
+  outcome: text("outcome").notNull(),
+  itemsSeen: integer("items_seen").notNull().default(0),
+  discovered: integer("discovered").notNull().default(0),
+  duplicatesSkipped: integer("duplicates_skipped").notNull().default(0),
+  pagesProcessed: integer("pages_processed").notNull().default(0),
+  errorMessage: text("error_message"),
+  healthAfter: sourceHealthStatusEnum("health_after"),
+});
 
 // ── flyer / artwork candidates ────────────────────────────────────
 /**
