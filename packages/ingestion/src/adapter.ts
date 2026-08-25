@@ -49,6 +49,11 @@ export interface CrawlContext {
    * `process.env` at the point of use. */
   env?: Record<string, string | undefined>;
   signal?: AbortSignal;
+  /** Per-request fetch timeout in ms, enforced by the worker's crawl
+   * pipeline (see `runSource` in apps/worker). Overridable for tests that
+   * need a hung request to time out quickly rather than waiting out the
+   * production default. */
+  fetchTimeoutMs?: number;
 }
 
 /**

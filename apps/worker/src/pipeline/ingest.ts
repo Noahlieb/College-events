@@ -19,6 +19,42 @@ import {
 } from "@college-events/core";
 import { log } from "../lib/log.js";
 
+/**
+ * No adapter constructs its own fetch timeout — they all resolve network
+ * calls through `context.fetchImpl ?? fetch` and simply await whatever that
+ * returns. A source whose server accepts the connection and then never
+ * responds hangs that fetch forever, and since a crawl waits for every
+ * source to finish, one unresponsive platform stalls the whole run. This is
+ * the one place that fixes it for every adapter at once, instead of adding
+ * a timeout to each of them individually.
+ */
+const DEFAULT_SOURCE_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Wraps a fetch implementation so every request it makes is aborted if it
+ * doesn't complete within `timeoutMs`. Applied once per source run — see
+ * the note above `DEFAULT_SOURCE_FETCH_TIMEOUT_MS`.
+ */
+function withFetchTimeout(fetchImpl: typeof fetch, timeoutMs: number): typeof fetch {
+  return (async (input, init) => {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error(`fetch timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    const callerSignal = init?.signal;
+    if (callerSignal) {
+      if (callerSignal.aborted) controller.abort(callerSignal.reason);
+      else callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), { once: true });
+    }
+    try {
+      return await fetchImpl(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }) as typeof fetch;
+}
+
 /** What actually happened, so callers don't have to infer it from health. */
 export type SourceRunOutcome =
   | "ok"
@@ -192,10 +228,17 @@ export async function runSource(
   }
 
   const now = context.now ?? new Date();
+  const boundedContext: CrawlContext = {
+    ...context,
+    fetchImpl: withFetchTimeout(
+      context.fetchImpl ?? fetch,
+      context.fetchTimeoutMs ?? DEFAULT_SOURCE_FETCH_TIMEOUT_MS,
+    ),
+  };
 
   try {
     const items = adapter
-      ? await adapter.discover(instance, context)
+      ? await adapter.discover(instance, boundedContext)
       : await legacy!.fetchNew({
           source: {
             id: source.id,
@@ -205,10 +248,10 @@ export async function runSource(
           },
           lastSuccessfulCheckAt: source.lastSuccessfulCheckAt,
           maxItems: context.maxItems,
-          fetchImpl: context.fetchImpl,
+          fetchImpl: boundedContext.fetchImpl,
         });
 
-    const assetOffers = await collectAssetOffers(adapter, instance, items, context);
+    const assetOffers = await collectAssetOffers(adapter, instance, items, boundedContext);
     const { discovered, duplicatesSkipped } = await persistItems(
       source.schoolId,
       source.id,
