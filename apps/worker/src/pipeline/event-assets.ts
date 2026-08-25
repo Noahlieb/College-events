@@ -7,7 +7,6 @@ import {
   type AssetClassification,
 } from "@college-events/core";
 import type { AssetCandidate } from "@college-events/ingestion";
-import { inspectImage, type ImageFacts } from "@college-events/render";
 
 /**
  * Flyer selection for a canonical event, across every source that reported
@@ -270,13 +269,21 @@ export async function recordObservationImage(args: {
 
 /**
  * Replays every asset offer an observation carried into the canonical
- * event's candidate pool, hashing each image so copies of one flyer are
- * recognised as copies.
+ * event's candidate pool.
  *
  * This is the piece that makes the flyer pipeline actually aggregate.
  * Before it, an event's artwork was whatever single `mediaUrl` its first
  * reporting source happened to have; adapters implemented `discoverAssets`
  * and nothing ever called it.
+ *
+ * Stores whatever dimensions the adapter itself reported and nothing more
+ * — deliberately no image download and no perceptual hash here. This
+ * module is on the import path `process.ts` uses, which the dashboard's
+ * "Process" button reaches through a deep import specifically chosen to
+ * keep sharp (a native binary Next.js cannot bundle into a serverless
+ * function) out of the dashboard's build. Hashing needs sharp, so it runs
+ * as its own worker-only batch step — see `hash-assets.ts` — the same way
+ * rendering and artwork generation already do.
  */
 export async function ingestAssetOffers(args: {
   schoolId: string;
@@ -284,26 +291,11 @@ export async function ingestAssetOffers(args: {
   sourceId: string;
   rawContentId: string;
   offers: AssetCandidate[];
-  fetchImage?: (url: string) => Promise<Buffer | null>;
 }): Promise<number> {
   if (args.offers.length === 0) return 0;
-  const fetchImage = args.fetchImage ?? defaultFetchImage;
   let stored = 0;
 
   for (const offer of args.offers) {
-    // Hashing needs the bytes. A candidate we cannot download is still
-    // worth recording — it simply cannot be grouped with others, and a
-    // hashless candidate is better than a missing one.
-    let facts: ImageFacts | null = null;
-    const bytes = await fetchImage(offer.sourceUrl);
-    if (bytes) {
-      try {
-        facts = await inspectImage(bytes);
-      } catch {
-        facts = null;
-      }
-    }
-
     const inserted = await db
       .insert(assetCandidates)
       .values({
@@ -312,11 +304,9 @@ export async function ingestAssetOffers(args: {
         sourceId: args.sourceId,
         rawContentId: args.rawContentId,
         sourceUrl: offer.sourceUrl,
-        width: facts?.width ?? offer.width ?? null,
-        height: facts?.height ?? offer.height ?? null,
-        mime: facts?.mime ?? offer.mime ?? null,
-        bytes: facts?.bytes ?? null,
-        perceptualHash: facts?.perceptualHash ?? null,
+        width: offer.width ?? null,
+        height: offer.height ?? null,
+        mime: offer.mime ?? null,
         classification: classifyCandidate(offer),
         isOfficial: offer.isOfficial,
         isAiGenerated: false,
@@ -330,27 +320,6 @@ export async function ingestAssetOffers(args: {
   }
 
   return stored;
-}
-
-/** Downloads an image, with a cap so one huge file cannot stall a batch. */
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
-
-async function defaultFetchImage(url: string): Promise<Buffer | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-
-    const declared = Number(res.headers.get("content-length") ?? 0);
-    if (declared > MAX_IMAGE_BYTES) return null;
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    return buffer.byteLength > MAX_IMAGE_BYTES ? null : buffer;
-  } catch {
-    return null;
-  }
 }
 
 /**

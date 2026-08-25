@@ -14,3 +14,5 @@ export * from "./logic/assets.js";
 export * from "./logic/phash.js";
 export * from "./logic/scheduling.js";
 export * from "./logic/coverage.js";
+export * from "./logic/discovery-miss.js";
+export * from "./logic/recommendations.js";

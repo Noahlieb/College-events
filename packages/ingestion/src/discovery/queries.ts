@@ -185,3 +185,31 @@ export function buildDiscoveryQueries(university: UniversityProfile): DiscoveryQ
 
   return queries;
 }
+
+/**
+ * Broad "what's actually happening" queries — different in kind from
+ * `buildDiscoveryQueries` above.
+ *
+ * The source-discovery queries look for *producers* (venues, platforms,
+ * departments) so their feeds can be added to the registry. These look for
+ * *events themselves*, on the open web, independent of who reported them —
+ * which is what makes them useful as an outside check on the registry:
+ * a producer query can only find producers we thought to search for, but
+ * an event-shaped query finds whatever is actually happening regardless of
+ * whether we have any idea who is behind it.
+ *
+ * Kept deliberately small. This runs periodically as a coverage check, not
+ * on every discovery pass — a broad "what's on this weekend" search is
+ * expensive to run at high frequency and cheap to run weekly.
+ */
+export function buildDiscoveryMissProbeQueries(university: UniversityProfile): string[] {
+  const place = `${university.city}, ${university.state}`;
+  return [
+    `"${university.shortName}" events this week`,
+    `"${university.shortName}" this weekend`,
+    `things to do in ${place} this weekend`,
+    `${place} events tonight`,
+    `"${university.name}" party`,
+    `${place} concerts this week`,
+  ];
+}

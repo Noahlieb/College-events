@@ -419,6 +419,81 @@ export const eventSources = pgTable(
   }),
 );
 
+// ── discovery miss probe: run log ───────────────────────────────────
+/**
+ * One execution of the broad discovery-miss probe.
+ *
+ * `discovery_misses` only ever holds unmatched candidates — a matched one
+ * is not interesting enough to keep a row for. That means the miss table
+ * alone cannot answer "what fraction of what we found did we miss": there
+ * is no record of how many *matched*. This is that denominator.
+ */
+export const discoveryProbeRuns = pgTable("discovery_probe_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schoolId: uuid("school_id")
+    .notNull()
+    .references(() => schools.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  queriesRun: integer("queries_run").notNull(),
+  resultsSeen: integer("results_seen").notNull(),
+  matched: integer("matched").notNull(),
+  recordedAsMisses: integer("recorded_as_misses").notNull(),
+  runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── discovery miss probe ────────────────────────────────────────────
+/**
+ * One event a broad, independent discovery pass found that our registered
+ * sources did not report.
+ *
+ * This is the measurement behind the discovery miss rate, and it exists
+ * because a source registry cannot see its own blind spots — only a
+ * second, different look can. A row here is not proof an event was
+ * "missed" forever; `matchedEventId` is set if a later crawl or a closer
+ * look ties it to a canonical event after all, which is why misses are
+ * kept rather than only counted.
+ */
+export const discoveryMisses = pgTable(
+  "discovery_misses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schoolId: uuid("school_id")
+      .notNull()
+      .references(() => schools.id, { onDelete: "cascade" }),
+
+    discoveredUrl: text("discovered_url").notNull(),
+    eventTitle: text("event_title").notNull(),
+    /** Best-effort — search snippets rarely carry a clean date. */
+    eventDateGuess: timestamp("event_date_guess", { withTimezone: true }),
+    referringProvider: text("referring_provider").notNull(),
+
+    /** Set when the discovered event turns out to belong to a producer we
+     * already track — a signal the *source*, not just this one event, is
+     * the gap. */
+    matchedEntityId: uuid("matched_entity_id").references(() => entities.id, { onDelete: "set null" }),
+    /** Set if later evidence ties this to a canonical event after all —
+     * at recording time it did not match anything registered sources had
+     * reported. */
+    matchedEventId: uuid("matched_event_id").references(() => events.id, { onDelete: "set null" }),
+
+    suspectedDomain: text("suspected_domain").notNull(),
+    /** Did a source_discovery_candidate for this domain already exist when
+     * the miss was recorded? Tells the difference between "we knew about
+     * this and haven't gotten to it" and "we had never seen this before". */
+    hadExistingCandidate: boolean("had_existing_candidate").notNull().default(false),
+    /** Set when repeated misses from this domain triggered a new
+     * candidate — see `recommendSourcesFromMisses`. */
+    createdCandidateId: uuid("created_candidate_id").references(() => sourceDiscoveryCandidates.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    domainIdx: uniqueIndex("discovery_miss_school_url_idx").on(table.schoolId, table.discoveredUrl),
+  }),
+);
+
 // ── crawl jobs and run history ────────────────────────────────────
 /**
  * One queued crawl of one source.

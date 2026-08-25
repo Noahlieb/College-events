@@ -64,6 +64,20 @@
       "when": 1787670617780,
       "tag": "0008_artwork_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787671515963,
+      "tag": "0009_discovery_misses",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787671772873,
+      "tag": "0010_discovery_probe_runs",
+      "breakpoints": true
     }
   ]
 }

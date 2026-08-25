@@ -7,6 +7,8 @@ import { sourceReport } from "./pipeline/source-report.js";
 import { tickScheduler } from "./pipeline/crawl-scheduler.js";
 import { discoverUniversitySources } from "./pipeline/discover.js";
 import { resolveArtworkForSchool } from "./pipeline/resolve-artwork.js";
+import { runDiscoveryMissProbe } from "./pipeline/discovery-miss-probe.js";
+import { hashPendingAssets } from "./pipeline/hash-assets.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
@@ -31,6 +33,15 @@ Usage: pnpm --filter @college-events/worker start <command> [args]
 Commands:
   ingest [school]                          Crawl every active source through its adapter and write
                                             what they find straight into raw_content
+  discover-misses [school]                 Run broad "what's actually happening" queries and check
+                                            them against events our registered sources already
+                                            caught. Repeated misses from one place become a reviewable
+                                            source candidate. Meant to run occasionally (e.g. weekly),
+                                            not on every daily pipeline run.
+  hash-assets [school]                     Perceptually hash asset candidates that don't have one
+                                            yet, so copies of one flyer are recognised as copies.
+                                            Isolated from process/ingest because it needs sharp,
+                                            which cannot be bundled into the dashboard's build.
   resolve-artwork [school]                 Bring every event with completed asset discovery to a
                                             decided artwork state: select the best real image, or
                                             generate one when none exists. Idempotent — re-running
@@ -120,6 +131,12 @@ async function main() {
       console.log(summary);
       break;
     }
+    case "hash-assets": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const summary = await hashPendingAssets(schoolId);
+      console.log(summary);
+      break;
+    }
     case "resolve-artwork": {
       const schoolId = await resolveSchoolId(args[0] ?? "FAU");
       const force = args.includes("--force");
@@ -134,6 +151,15 @@ async function main() {
         alreadyGenerated: summary.alreadyGenerated,
         skipped: summary.skipped,
       });
+      break;
+    }
+    case "discover-misses": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const summary = await runDiscoveryMissProbe(schoolId);
+      if (!summary.configured) {
+        console.log("No search provider configured — set DISCOVERY_PROVIDER (brave|google_cse) and its key.");
+      }
+      console.log(summary);
       break;
     }
     case "source-report": {

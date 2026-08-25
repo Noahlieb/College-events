@@ -1,7 +1,8 @@
-import { and, count, eq, gte, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "../client.js";
 import {
   assetCandidates,
+  discoveryProbeRuns,
   entities,
   entitySources,
   events,
@@ -24,7 +25,7 @@ export async function gatherCoverage(
 ): Promise<CoverageReport> {
   const since = options.since ?? new Date(Date.now() - 30 * 86_400_000);
 
-  const [sourceRows, entityRows, linkedEntityRows, eventRows, flyerRows, candidateRows] =
+  const [sourceRows, entityRows, linkedEntityRows, eventRows, flyerRows, missCountRow] =
     await Promise.all([
       db
         .select({ healthStatus: sources.healthStatus, active: sources.active })
@@ -67,10 +68,19 @@ export async function gatherCoverage(
           ),
         ),
 
+      // The real measurement, summed across every probe run: how many
+      // broadly-discovered events matched something a registered source
+      // already reported, versus how many did not. Reading it from the
+      // run log rather than counting rows in discovery_misses matters —
+      // that table only ever holds the *unmatched* half, so counting its
+      // rows alone would report every miss as 100% of the probe.
       db
-        .select({ status: sourceDiscoveryCandidates.status, method: sourceDiscoveryCandidates.discoveryMethod })
-        .from(sourceDiscoveryCandidates)
-        .where(eq(sourceDiscoveryCandidates.schoolId, schoolId)),
+        .select({
+          matched: sql<number>`coalesce(sum(${discoveryProbeRuns.matched}), 0)::int`,
+          missed: sql<number>`coalesce(sum(${discoveryProbeRuns.recordedAsMisses}), 0)::int`,
+        })
+        .from(discoveryProbeRuns)
+        .where(eq(discoveryProbeRuns.schoolId, schoolId)),
     ]);
 
   const coveredCategories = await db
@@ -90,10 +100,6 @@ export async function gatherCoverage(
   const orgs = entityRows.filter((e) => e.entityType === "organization");
   const venues = entityRows.filter((e) => e.entityType === "venue");
 
-  // A discovery "miss" is a candidate that surfaced because an independent
-  // pass found events no registered source had reported.
-  const misses = candidateRows.filter((c) => c.method === "discovery_miss");
-
   const input: CoverageInput = {
     expectedCategories,
     coveredCategories: coveredCategories.map((c) => c.category!).filter(Boolean),
@@ -107,8 +113,11 @@ export async function gatherCoverage(
     sourcesFailed: activeSources.filter((s) => s.healthStatus === "failed").length,
     eventsTotal: eventRows[0]?.total ?? 0,
     eventsWithOfficialFlyer: flyerRows[0]?.total ?? 0,
-    discoveryProbeEvents: candidateRows.length,
-    discoveryProbeMisses: misses.length,
+    // 0/0 until the probe has actually run at least once; computeCoverage
+    // reports "not measured" for that case rather than a falsely clean 0%
+    // miss rate.
+    discoveryProbeEvents: (missCountRow[0]?.matched ?? 0) + (missCountRow[0]?.missed ?? 0),
+    discoveryProbeMisses: missCountRow[0]?.missed ?? 0,
   };
 
   return computeCoverage(input);

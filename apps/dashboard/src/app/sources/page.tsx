@@ -1,8 +1,8 @@
 import {
-  db,
   entitiesWithSourceCounts,
   gatherCoverage,
   pendingCandidates,
+  recommendSources,
   sourcesWithEntities,
 } from "@college-events/db";
 import { COVERAGE_CATEGORIES, adapterSupport, platformSupported } from "@college-events/ingestion";
@@ -70,6 +70,7 @@ export default async function SourcesPage() {
   const universities = await listUniversities();
 
   const expected = COVERAGE_CATEGORIES.filter((c) => c.expected).map((c) => c.key);
+  const categoryLabels = Object.fromEntries(COVERAGE_CATEGORIES.map((c) => [c.key, c.label]));
   const [coverage, sourceRows, candidates, organizations, venues] = await Promise.all([
     gatherCoverage(school.id, expected),
     sourcesWithEntities(school.id),
@@ -77,6 +78,9 @@ export default async function SourcesPage() {
     entitiesWithSourceCounts(school.id, "organization"),
     entitiesWithSourceCounts(school.id, "venue"),
   ]);
+  // Derived from coverage.gaps, so it always agrees with what the panel
+  // above says is missing rather than recomputing gaps a second way.
+  const recommendations = await recommendSources(school.id, coverage.gaps, categoryLabels);
 
   const degraded = sourceRows.filter((r) => r.source.healthStatus === "degraded");
   const attention = sourceRows.filter(
@@ -147,6 +151,31 @@ export default async function SourcesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Recommendations ──────────────────────────────────────── */}
+      {recommendations.length > 0 && (
+        <div className="panel">
+          <div className="panel-header">
+            <h2 style={{ margin: 0 }}>Recommendations</h2>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              Derived from observable gaps — nothing here is created automatically.
+            </span>
+          </div>
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {recommendations.map((r, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                <span className={`badge ${r.priority === "high" ? "badge-red" : "badge-amber"}`}>
+                  {r.priority === "high" ? "HIGH PRIORITY" : "MEDIUM PRIORITY"}
+                </span>
+                <div>
+                  <strong>{r.title}</strong>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>{r.reason}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Source candidates ────────────────────────────────────── */}
       <div className="panel">

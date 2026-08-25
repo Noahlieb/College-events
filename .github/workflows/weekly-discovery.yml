@@ -1,0 +1,75 @@
+name: Weekly discovery
+
+# The discovery-miss probe and university source discovery both spend
+# search-provider quota to ask questions the daily pipeline doesn't need
+# answered every morning: "is there a producer we don't know about yet",
+# and "did anything happen this week that none of our sources caught".
+# Both are safety nets over a source graph that already works, so they run
+# weekly rather than daily.
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Monday, 08:00 America/New_York (EST); see daily.yml's DST note
+  workflow_dispatch:
+    inputs:
+      school:
+        description: "School short name"
+        required: false
+        default: "FAU"
+
+concurrency:
+  group: weekly-discovery
+  cancel-in-progress: false
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCHOOL: ${{ github.event.inputs.school || 'FAU' }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_STORAGE_BUCKET: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
+      DISCOVERY_PROVIDER: ${{ secrets.DISCOVERY_PROVIDER }}
+      BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+      GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
+      GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm --filter "@college-events/worker..." build
+
+      # Look for producers our source graph doesn't know about — venues,
+      # organizer pages, platform listings.
+      - name: Source discovery
+        continue-on-error: true
+        run: pnpm worker discover "$SCHOOL"
+
+      # Check whether events are happening that none of our registered
+      # sources reported. Feeds the discovery-miss-rate coverage metric and
+      # can turn a repeatedly-missed venue into a reviewable candidate.
+      - name: Discovery miss probe
+        continue-on-error: true
+        run: pnpm worker discover-misses "$SCHOOL"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Weekly discovery — $SCHOOL"
+            echo ""
+            echo "Results land as pending source_discovery_candidates — review them on the Sources page."
+            pnpm --silent worker source-report "$SCHOOL" || echo "_source report unavailable_"
+          } >> "$GITHUB_STEP_SUMMARY"

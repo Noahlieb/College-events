@@ -96,6 +96,14 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pnpm worker process "$SCHOOL"
 
+      # ── 2a. Hash new asset candidates ──────────────────────────────────
+      # A separate step, not part of processing: it downloads images and
+      # needs sharp, and grouping copies of the same flyer before artwork
+      # is resolved is what lets the best copy — not just any copy — win.
+      - name: Hash asset candidates
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm worker hash-assets "$SCHOOL"
+
       # ── 2b. Resolve every event's artwork ─────────────────────────────
       # Picks the best real image across every linked source, or generates
       # one when none exists. Separated from processing because generation
