@@ -6,6 +6,7 @@ import { ingestSchoolSources } from "./pipeline/ingest.js";
 import { sourceReport } from "./pipeline/source-report.js";
 import { tickScheduler } from "./pipeline/crawl-scheduler.js";
 import { discoverUniversitySources } from "./pipeline/discover.js";
+import { resolveArtworkForSchool } from "./pipeline/resolve-artwork.js";
 import { processSchoolRawContent } from "./pipeline/process.js";
 import { selectWeeklyPosts } from "./pipeline/select-posts.js";
 import { renderPost } from "./pipeline/render.js";
@@ -30,6 +31,10 @@ Usage: pnpm --filter @college-events/worker start <command> [args]
 Commands:
   ingest [school]                          Crawl every active source through its adapter and write
                                             what they find straight into raw_content
+  resolve-artwork [school]                 Bring every event with completed asset discovery to a
+                                            decided artwork state: select the best real image, or
+                                            generate one when none exists. Idempotent — re-running
+                                            costs nothing for events already resolved.
   discover [school]                        Search this university's ecosystem, fingerprint what
                                             comes back, and store reviewable source candidates
   crawl [school]                           Enqueue every source whose next run is due and work the
@@ -113,6 +118,22 @@ async function main() {
         );
       }
       console.log(summary);
+      break;
+    }
+    case "resolve-artwork": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const force = args.includes("--force");
+      const summary = await resolveArtworkForSchool(schoolId, force ? { limit: 200 } : {});
+      for (const { eventId, outcome } of summary.outcomes) {
+        console.log(`  ${outcome.action.padEnd(24)} ${eventId} — ${outcome.reason}`);
+      }
+      console.log({
+        inspected: summary.inspected,
+        selectedOfficial: summary.selectedOfficial,
+        generated: summary.generated,
+        alreadyGenerated: summary.alreadyGenerated,
+        skipped: summary.skipped,
+      });
       break;
     }
     case "source-report": {

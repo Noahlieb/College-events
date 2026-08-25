@@ -380,6 +380,14 @@ export const events = pgTable("events", {
    * and generating on the first is the bug this pipeline exists to stop. */
   assetDiscoveryStatus: text("asset_discovery_status").notNull().default("pending"),
   assetDiscoveryCompletedAt: timestamp("asset_discovery_completed_at", { withTimezone: true }),
+  /** "not_needed" | "pending" | "generated" | "failed". Kept separate from
+   * asset discovery so "we have not looked" and "we looked and generated"
+   * are distinguishable. */
+  generationStatus: text("generation_status").notNull().default("not_needed"),
+  /** Fingerprint of the event facts the artwork was generated from.
+   * Regeneration happens when this changes — not on every worker run,
+   * which would spend money redrawing the same picture nightly. */
+  generationInputHash: text("generation_input_hash"),
   /** Why the current selection won, in words, for the review UI. */
   selectedAssetReason: text("selected_asset_reason"),
   /** The winning asset among every candidate from every linked source.
@@ -523,6 +531,14 @@ export const assetCandidates = pgTable(
     confidence: real("confidence").notNull().default(0),
     /** Where in the page it came from: jsonld, opengraph, hero, api, … */
     origin: text("origin"),
+
+    /* ── provenance for artwork we made ourselves ──
+     * Stored so "why does this event have generated art" is answerable
+     * months later without re-deriving it. */
+    generationProvider: text("generation_provider"),
+    generationModel: text("generation_model"),
+    generationPrompt: text("generation_prompt"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

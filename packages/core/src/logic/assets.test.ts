@@ -71,18 +71,30 @@ describe("assetTier", () => {
     );
   });
 
-  it("ranks a logo barely above generated art and below real photos", () => {
-    // An org's badge is not a flyer — otherwise every club meeting would
-    // "have" one.
+  it("ranks generated art above generic imagery, since neither describes the event", () => {
+    // A share card and a badge are attached to a page or an org, not to
+    // this event — generated art matched to the event's category and
+    // timing says more about the night than either does. This is why
+    // generating is worth doing even when a logo or venue photo exists.
     const logo = assetTier(asset({ id: "logo", classification: "logo" }));
-    expect(logo).toBeGreaterThan(assetTier(generated()));
-    expect(logo).toBeLessThan(assetTier(asset({ id: "photo", classification: "photo" })));
+    const social = assetTier(asset({ id: "og", classification: "generic_social_image" }));
+    const venue = assetTier(asset({ id: "venue", classification: "venue_photo" }));
+    const gen = assetTier(generated());
+    expect(gen).toBeGreaterThan(logo);
+    expect(gen).toBeGreaterThan(social);
+    expect(gen).toBeGreaterThan(venue);
   });
 
-  it("ranks unofficial art below anything official", () => {
-    expect(assetTier(asset({ id: "u", isOfficial: false }))).toBeLessThan(
-      assetTier(asset({ id: "o", classification: "photo" })),
-    );
+  it("ranks any real art made for this event above generated art", () => {
+    const gen = assetTier(generated());
+    expect(assetTier(asset({ id: "flyer", classification: "flyer" }))).toBeGreaterThan(gen);
+    expect(assetTier(asset({ id: "art", classification: "event_art" }))).toBeGreaterThan(gen);
+  });
+
+  it("ranks an official flyer above an unofficial repost of one", () => {
+    const official = assetTier(asset({ id: "o", classification: "flyer", isOfficial: true }));
+    const repost = assetTier(asset({ id: "r", classification: "flyer", isOfficial: false }));
+    expect(official).toBeGreaterThan(repost);
   });
 });
 
@@ -168,9 +180,16 @@ describe("shouldUpgradeAsset — a duplicate can improve an event", () => {
     expect(shouldUpgradeAsset(current, asset({ id: "b", width: 1000, height: 1000 }))).toBe(false);
   });
 
-  it("replaces generated art as soon as anything real turns up", () => {
-    expect(shouldUpgradeAsset(generated(), asset({ id: "real", isOfficial: false, classification: "photo" }))).toBe(
-      true,
-    );
+  it("replaces generated art once real art made for this event turns up", () => {
+    // Real, event-specific art beats generated even without verified
+    // provenance — but generic imagery (a venue photo, a badge) does not,
+    // since generated art already outranks those.
+    expect(
+      shouldUpgradeAsset(generated(), asset({ id: "real", isOfficial: false, classification: "flyer" })),
+    ).toBe(true);
+  });
+
+  it("does not let a venue photo displace generated art, since generated already outranks it", () => {
+    expect(shouldUpgradeAsset(generated(), asset({ id: "venue", classification: "venue_photo" }))).toBe(false);
   });
 });

@@ -96,6 +96,15 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pnpm worker process "$SCHOOL"
 
+      # ── 2b. Resolve every event's artwork ─────────────────────────────
+      # Picks the best real image across every linked source, or generates
+      # one when none exists. Separated from processing because generation
+      # can call a paid model — putting it on the ingestion hot path would
+      # make one slow image call as costly as reprocessing everything.
+      - name: Resolve artwork
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm worker resolve-artwork "$SCHOOL"
+
       # ── 3. Rebuild this week + the next three ────────────────────────
       - name: Select posts
         if: steps.gate.outputs.run == 'true'

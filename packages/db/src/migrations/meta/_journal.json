@@ -57,6 +57,13 @@
       "when": 1787670282195,
       "tag": "0007_asset_aggregation",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787670617780,
+      "tag": "0008_artwork_generation",
+      "breakpoints": true
     }
   ]
 }

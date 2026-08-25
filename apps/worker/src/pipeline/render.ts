@@ -5,6 +5,7 @@ import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib
 import { formatDateKicker, formatTimeRange } from "../lib/format.js";
 import { mondayOfWeek, formatWeekRangeLabel } from "../lib/week.js";
 import { resolveEventImage } from "./event-assets.js";
+import { resolveEventArtwork } from "./artwork.js";
 
 /** Best-effort image fetch — a failed/slow/unreachable source photo must
  * never break rendering; the slide falls back to a category placeholder. */
@@ -87,9 +88,26 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
 
   for (const { event } of linkedEvents) {
     // Chosen across every source linked to this event, not just the one
-    // that happened to report it first — a placeholder is only reached
-    // when no source anywhere offered artwork.
-    const { url: imageUrl } = await resolveEventImage(event);
+    // that happened to report it first.
+    let { url: imageUrl } = await resolveEventImage(event);
+    if (!imageUrl && event.assetDiscoveryStatus === "complete") {
+      // Safety net: the batch artwork step normally resolves this before
+      // render runs, but a post can be rendered before that step has had
+      // a chance to. Going through the governed pipeline here — rather
+      // than letting the slide renderer fall back to its own ungoverned
+      // placeholder — is what keeps the official-beats-generated rule and
+      // the generation provenance record the single source of truth for
+      // every event's artwork, not just the ones a batch job reached first.
+      const outcome = await resolveEventArtwork(event.id, { schoolShortName: school.shortName });
+      if (outcome.action === "generated" || outcome.action === "selected_official" || outcome.action === "selected_existing_generated") {
+        const refreshed = await resolveEventImage({ ...event, canonicalAssetId: outcome.assetId });
+        imageUrl = refreshed.url;
+      }
+    }
+    // Even after that, a network failure fetching the chosen image still
+    // falls through to the slide renderer's own placeholder — the true
+    // last resort, for when the image we selected cannot be downloaded
+    // right now.
     const image = await fetchImageSafely(imageUrl);
     const slideBuffer = await renderEventSlide({
       image,
