@@ -4,13 +4,33 @@ function ordinal(n: number): string {
   return `${n}${suffixes[(v - 20) % 10] ?? suffixes[v] ?? suffixes[0]}`;
 }
 
-/** "AUGUST 22ND" in the school's local timezone. */
-export function formatDateKicker(iso: string, tz: string): string {
-  const date = new Date(iso);
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "long", day: "numeric" }).formatToParts(date);
-  const month = parts.find((p) => p.type === "month")!.value;
-  const day = parseInt(parts.find((p) => p.type === "day")!.value, 10);
-  return `${month.toUpperCase()} ${ordinal(day)}`;
+function monthDay(iso: string, tz: string): { month: string; day: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "long", day: "numeric" }).formatToParts(
+    new Date(iso),
+  );
+  return { month: parts.find((p) => p.type === "month")!.value, day: parseInt(parts.find((p) => p.type === "day")!.value, 10) };
+}
+
+/**
+ * "AUGUST 22ND" in the school's local timezone, or "AUGUST 22ND–23RD" (or
+ * "AUGUST 31ST–SEPTEMBER 1ST" across a month boundary) when `endIso` falls
+ * on a different calendar day there — a 2-day conference gets one flyer
+ * with a date range instead of looking like a single-day event. Calendar
+ * day is compared in the school's own timezone, not the raw instants: an
+ * 11PM–1AM event technically crosses midnight but isn't what "spans
+ * multiple days" means here.
+ */
+export function formatDateKicker(iso: string, tz: string, endIso?: string | null): string {
+  const start = monthDay(iso, tz);
+  const startLabel = `${start.month.toUpperCase()} ${ordinal(start.day)}`;
+  if (!endIso) return startLabel;
+
+  const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+  if (dayFmt.format(new Date(iso)) === dayFmt.format(new Date(endIso))) return startLabel;
+
+  const end = monthDay(endIso, tz);
+  const endLabel = start.month === end.month ? ordinal(end.day) : `${end.month.toUpperCase()} ${ordinal(end.day)}`;
+  return `${startLabel}–${endLabel}`;
 }
 
 function formatClock(iso: string, tz: string): string {
@@ -61,6 +81,27 @@ export function formatWeekRangeSentence(weekMonday: Date): string {
   const endDay = sunday.getUTCDate();
   if (startMonth === endMonth) return `${startMonth} ${startDay} to ${endDay}`;
   return `${startMonth} ${startDay} to ${endMonth} ${endDay}`;
+}
+
+/** Phrases scraped sources use in place of a real venue when the location
+ * is access-gated rather than genuinely unknown ("Sign in to see location"
+ * is Facebook/Eventbrite's own wording for an RSVP-gated address). Matched
+ * as a substring since these show up embedded in longer sentences, not
+ * just as the whole field. */
+const RESTRICTED_VENUE_RE = /sign[\s-]?in|log[\s-]?in|members?\s+only|private\s+event|rsvp|invite\s+only/i;
+/** Placeholder text some sources put in the venue field instead of leaving
+ * it empty — treated the same as no venue at all. */
+const PLACEHOLDER_VENUE_RE = /^(tbd|n\/a|na|unknown|none|location tbd)$/i;
+
+/**
+ * "(USF) (Tampa) 🔒" when a venue is missing or is one of the
+ * access-gated/placeholder patterns above; otherwise the venue as given.
+ * `city` should be the event's own city when known, else the school's.
+ */
+export function resolveVenueLabel(venue: string | null, schoolShortName: string, city: string): string {
+  const trimmed = venue?.trim() ?? "";
+  const hidden = !trimmed || PLACEHOLDER_VENUE_RE.test(trimmed) || RESTRICTED_VENUE_RE.test(trimmed);
+  return hidden ? `(${schoolShortName}) (${city}) 🔒` : trimmed;
 }
 
 /** "@fau.events" — normalized to always carry exactly one leading "@",

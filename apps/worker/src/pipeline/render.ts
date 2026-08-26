@@ -2,7 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { renderCoverSlide, renderEventSlide, type SlideBranding } from "@college-events/render";
 import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib/storage.js";
-import { formatDateKicker, formatTimeRange } from "../lib/format.js";
+import { formatDateKicker, formatTimeRange, resolveVenueLabel } from "../lib/format.js";
 import { mondayOfWeek, formatWeekRangeLabel } from "../lib/week.js";
 import { resolveEventImage } from "./event-assets.js";
 import { resolveEventArtwork } from "./artwork.js";
@@ -123,9 +123,16 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     const image = await fetchImageSafely(imageUrl);
     const slideBuffer = await renderEventSlide({
       image,
-      date: formatDateKicker(event.startAt.toISOString(), school.timezone),
+      // Multi-day events (spec item 6) get a date range on this one slide
+      // rather than looking like a single-day event — formatDateKicker only
+      // widens to a range when startAt/endAt actually land on different
+      // calendar days in the school's timezone.
+      date: formatDateKicker(event.startAt.toISOString(), school.timezone, event.endAt?.toISOString() ?? null),
       title: event.name,
-      venue: event.venue,
+      // A missing or access-gated venue ("Sign in to see location") reads as
+      // a broken flyer, not a real one — resolveVenueLabel swaps it for the
+      // school/city fallback instead of leaving the field blank.
+      venue: resolveVenueLabel(event.venue, school.shortName, event.city ?? school.city),
       time: formatTimeRange(event.startAt.toISOString(), event.endAt?.toISOString() ?? null, school.timezone),
       price: event.price,
       description: event.description,

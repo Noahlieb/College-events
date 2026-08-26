@@ -4,6 +4,10 @@ import { SLIDE_HEIGHT, SLIDE_WIDTH, type EventSlideInput } from "./types.js";
 
 const MARGIN = 64;
 const CONTENT_WIDTH = SLIDE_WIDTH - MARGIN * 2;
+/** Bumped from 34 — the date is the first thing a viewer needs to register
+ * on a carousel of slides, and it was getting lost next to the much larger
+ * title even with the outline treatment. */
+const DATE_FONT_SIZE = 38;
 
 /**
  * White text over an arbitrary flyer photo, backed only by the bottom
@@ -94,7 +98,7 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const metaLineH = (meta?.fontSize ?? 0) * 1.35;
   const descLineH = (description?.fontSize ?? 0) * 1.4;
 
-  const dateH = input.date ? 34 * 1.3 : 0;
+  const dateH = input.date ? DATE_FONT_SIZE * 1.3 : 0;
   const gapAfterDate = input.date ? 14 : 0;
   const titleH = title.lines.length * titleLineH;
   const gapAfterTitle = meta || description ? 22 : 0;
@@ -117,13 +121,21 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
 
   if (input.date) {
     cursorY += dateH * 0.75; // move to baseline for this block
-    // Previously bare accentColor text with nothing behind it — invisible
-    // whenever that color was too close to whatever the flyer happened to
-    // be in that spot. Same outline treatment as the title fixes it the
-    // same way, without needing to hand-position a background pill against
-    // font metrics this file doesn't have precise access to.
+    const dateText = input.date.toUpperCase();
+    const dateTextWidth = measureWidth(bodyBold, dateText, DATE_FONT_SIZE);
+    // A soft dark backing behind the date — same idea as the corner pills,
+    // but low-opacity and hugging the text tightly rather than a hard
+    // sticker, so it reads as "bolder" without breaking from the flyer
+    // design the way an opaque pill would. The outline treatment alone
+    // (still applied below) guarantees legibility; this backing is what
+    // makes it the first thing your eye lands on instead of competing with
+    // the photo behind it.
+    parts.push(`
+      <rect x="${MARGIN - 12}" y="${cursorY - DATE_FONT_SIZE * 0.82}" rx="8" ry="8"
+        width="${dateTextWidth + 24}" height="${DATE_FONT_SIZE * 1.15}" fill="#000000" opacity="0.4" />
+    `);
     parts.push(
-      textPathElement(bodyBold, input.date.toUpperCase(), MARGIN, cursorY, 34, outlinedFill(branding.accentColor, 34)),
+      textPathElement(bodyBold, dateText, MARGIN, cursorY, DATE_FONT_SIZE, outlinedFill(branding.accentColor, DATE_FONT_SIZE)),
     );
     cursorY += dateH * 0.25 + gapAfterDate;
   }
