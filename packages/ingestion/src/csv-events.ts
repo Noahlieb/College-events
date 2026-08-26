@@ -102,7 +102,7 @@ function splitVenue(raw: string, defaultCity: string): { venue: string; city: st
  * University is optional and only matters for a multi-school upload: a row
  * with no value there targets whatever school the caller is importing into.
  */
-export function parseEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
+function parseSpreadsheetEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
   const records = parseCsvRecords(csvText);
   const rows: CsvEventRow[] = [];
   const errors: CsvParseError[] = [];
@@ -164,4 +164,110 @@ export function parseEventsCsv(csvText: string, opts: { defaultCity: string; sub
   });
 
   return { rows, errors };
+}
+
+/** Splits a street address into just the city — "2435 N Miami Ave, Miami,
+ * FL 33137, USA" -> "Miami". The posh.vip scraper (scrape_posh.py) always
+ * emits this "street, city, state zip, country" shape, so the city is
+ * reliably the second comma-separated segment. */
+function cityFromAddress(address: string, defaultCity: string): string {
+  const parts = address.split(",").map((p) => p.trim());
+  return parts[1] || defaultCity;
+}
+
+/**
+ * "2026-08-27T22:00:00-04:00" -> { date: "2026-08-27", time: "22:00" }.
+ * Sliced directly out of the string rather than reparsed through a Date
+ * and re-zoned: the offset in these timestamps already matches the
+ * school's own local time (the scraper writes wall-clock local time, not
+ * true UTC-normalized time), so converting through a timezone library
+ * would double-apply the offset. Taking the digits as printed is correct.
+ */
+function splitLocalIso(iso: string): { date: string; time: string } | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(iso);
+  return m ? { date: m[1]!, time: m[2]! } : null;
+}
+
+/**
+ * Parses the alternate schema produced by the posh.vip scraper
+ * (scrape_posh.py): scraped_at, school, name, start_date, end_date, venue,
+ * address, organizer, description, image_url, event_url. There's no
+ * Category column at all here, so categorizeEvent's text-matching is the
+ * primary signal rather than a fallback the way it is in
+ * parseSpreadsheetEventsCsv.
+ */
+function parsePoshEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
+  const records = parseCsvRecords(csvText);
+  const rows: CsvEventRow[] = [];
+  const errors: CsvParseError[] = [];
+
+  records.forEach((record, idx) => {
+    const rowNumber = idx + 1;
+    const name = pickField(record, "name", "Event", "Title");
+    const startDateRaw = pickField(record, "start_date", "Start Date");
+    const endDateRaw = pickField(record, "end_date", "End Date");
+    const venue = pickField(record, "venue", "Venue");
+    const address = pickField(record, "address", "Address");
+    const organizer = pickField(record, "organizer", "Organizer");
+    const description = pickField(record, "description", "Notes");
+    const imageUrl = pickField(record, "image_url", "Image URL");
+    const eventUrl = pickField(record, "event_url", "Link", "URL");
+    const university = pickField(record, "school", "University", "Campus");
+
+    if (!name) {
+      errors.push({ rowNumber, reason: "missing name" });
+      return;
+    }
+    const start = splitLocalIso(startDateRaw);
+    if (!start) {
+      errors.push({
+        rowNumber,
+        reason: `missing or unparseable start_date ("${startDateRaw}") — expected an ISO timestamp`,
+      });
+      return;
+    }
+    const end = endDateRaw ? splitLocalIso(endDateRaw) : null;
+
+    const city = address ? cityFromAddress(address, opts.defaultCity) : opts.defaultCity;
+    const { category } = categorizeEvent({ name, description, organization: organizer });
+    const ageRequirement = /\b21\+/.test(`${name} ${description}`) ? "21+" : null;
+
+    rows.push({
+      rowNumber,
+      universityHint: university || null,
+      input: {
+        name,
+        date: start.date,
+        startTime: start.time,
+        endTime: end?.time ?? null,
+        venue: venue || null,
+        city: city || null,
+        price: null, // not present in this scraper's output
+        description: description || name,
+        flyerUrl: imageUrl || null,
+        sourceUrl: eventUrl || null,
+        category,
+        organization: organizer || null,
+        ageRequirement,
+        isRecurring: /\brecurring\b/i.test(description),
+        submittedBy: opts.submittedBy,
+      },
+    });
+  });
+
+  return { rows, errors };
+}
+
+/**
+ * Single entry point for both accepted CSV shapes — the manual/spreadsheet
+ * format (Date, Event, Time (ET), ...) and the posh.vip scraper's own
+ * export format (start_date, name, event_url, ...). Dispatches purely on
+ * which columns the header row actually has, so callers (the dashboard's
+ * import action, the worker CLI) never need to know or ask which format a
+ * given file is in.
+ */
+export function parseEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
+  const headerLine = csvText.split(/\r?\n/, 1)[0] ?? "";
+  const isPoshFormat = /(^|,)\s*start_date\s*(,|$)/i.test(headerLine);
+  return isPoshFormat ? parsePoshEventsCsv(csvText, opts) : parseSpreadsheetEventsCsv(csvText, opts);
 }
