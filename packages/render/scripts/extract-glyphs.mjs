@@ -25,8 +25,17 @@ const FONTS = [
   { file: "Archivo-Regular.ttf", out: "archivo-regular.ts" },
 ];
 
-// Printable ASCII, space through tilde.
-const CHARS = Array.from({ length: 0x7e - 0x20 + 1 }, (_, i) => String.fromCharCode(0x20 + i));
+// Printable ASCII, space through tilde, plus the handful of non-ASCII marks
+// actually used un-normalized by the renderer. "•" (U+2022) is the one that
+// bit us: metaParts.join("   •   ") in svgTemplate.ts uses it directly
+// rather than through TYPOGRAPHY_NORMALIZE (unlike –/—/… which do map to
+// ASCII there), so without its glyph extracted, sanitizeForFont silently
+// dropped every bullet the layout code emitted — no error, just an
+// increasingly wide gap where the separator should have been.
+const CHARS = [
+  ...Array.from({ length: 0x7e - 0x20 + 1 }, (_, i) => String.fromCharCode(0x20 + i)),
+  "•", // •
+];
 
 mkdirSync(OUT_DIR, { recursive: true });
 

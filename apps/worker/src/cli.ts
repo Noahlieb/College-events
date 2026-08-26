@@ -21,6 +21,7 @@ import { runLivePhantomBusterIngest } from "./pipeline/phantombuster-live.js";
 import { submitManualEvent } from "./pipeline/manual.js";
 import { importCsvEvents } from "./pipeline/csv-import.js";
 import { backfillLanes } from "./pipeline/backfill-lanes.js";
+import { shortenExistingDescriptions } from "./pipeline/shorten-descriptions.js";
 import { runDemo } from "./demo.js";
 import { eq } from "drizzle-orm";
 import { db, sources } from "@college-events/db";
@@ -63,6 +64,10 @@ Commands:
   backfill-lanes [school] [--dry-run]      Bring an existing DB in line with the current lane rules:
                                             prune dead schedule slots, pin single-purpose sources to
                                             their category, recategorize + rescore their past events
+  shorten-descriptions [school]            One-time backfill: AI-shorten any existing event's
+                                            description that's still the original long raw text
+                                            (auto-shortening only applies going forward at
+                                            creation/merge time otherwise)
   render <postId>                          Render a post's branded carousel
   render-all [school]                      Re-render every current/future post that can still change
                                             (skips published posts and past weeks)
@@ -202,6 +207,12 @@ async function main() {
       const schoolId = await resolveSchoolId(args.find((a) => !a.startsWith("--")) ?? "FAU");
       const summary = await backfillLanes(schoolId, dryRun);
       console.log(dryRun ? "DRY RUN — nothing written:" : "Applied:");
+      console.log(summary);
+      break;
+    }
+    case "shorten-descriptions": {
+      const schoolId = await resolveSchoolId(args[0] ?? "FAU");
+      const summary = await shortenExistingDescriptions(schoolId);
       console.log(summary);
       break;
     }

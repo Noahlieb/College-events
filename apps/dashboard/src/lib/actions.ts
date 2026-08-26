@@ -22,7 +22,10 @@ import { schedulePost } from "@college-events/worker/dist/pipeline/schedule.js";
 import { processSchoolRawContent } from "@college-events/worker/dist/pipeline/process.js";
 import { importCsvEvents } from "@college-events/worker/dist/pipeline/csv-import.js";
 import { selectWeeklyPosts } from "@college-events/worker/dist/pipeline/select-posts.js";
+import { shortenExistingDescriptions, type ShortenDescriptionsSummary } from "@college-events/worker/dist/pipeline/shorten-descriptions.js";
 import { getCurrentSchool } from "./current-school";
+
+export type { ShortenDescriptionsSummary };
 
 // ── event actions ────────────────────────────────────────────────────
 
@@ -219,6 +222,22 @@ export async function runProcessAction() {
   await processSchoolRawContent(school.id);
   revalidatePath("/");
   revalidatePath("/events");
+}
+
+/**
+ * One-time backfill for events that existed before description
+ * auto-shortening shipped — that only runs going forward at
+ * creation/merge time (process.ts/manual.ts), so anything already in the
+ * database is still carrying its original raw description. Runs one AI
+ * call per long-description event for the current school, so this can
+ * take a while on a school with a lot of history — same "may time out,
+ * safe to re-run" shape as the CSV import and weekly-post-build actions.
+ */
+export async function shortenDescriptionsAction() {
+  const school = await getCurrentSchool();
+  const summary = await shortenExistingDescriptions(school.id);
+  revalidatePath("/events");
+  return summary;
 }
 
 // ── CSV import ───────────────────────────────────────────────────────

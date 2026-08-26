@@ -24,11 +24,15 @@ export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> 
   const bodyRegular = bodyRegularFont();
   const centerX = SLIDE_WIDTH / 2;
 
+  // Bumped from 104/56 — a short kicker like "WEEKEND GUIDE" was already
+  // hitting fitText's max and still reading small against the full
+  // 1080x1350 canvas; this is the actual ceiling now, not a floor that
+  // happens to be reached.
   const kicker = fitText(input.kicker.toUpperCase(), {
     font: display,
     boxWidth: SLIDE_WIDTH - MARGIN * 2,
-    startFontSize: 104,
-    minFontSize: 56,
+    startFontSize: 140,
+    minFontSize: 72,
     maxLines: 3,
   });
   const kickerLineH = kicker.fontSize * 1.05;
@@ -42,15 +46,15 @@ export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> 
     .map((line, i) => centeredLine(display, line, centerX, kickerBaseY + (i + 1) * kickerLineH, kicker.fontSize, { fill: "#FFFFFF" }))
     .join("\n");
 
-  const dateRangePath = centeredLine(bodyBold, input.dateRange.toUpperCase(), centerX, dateRangeY, 40, {
+  const dateRangePath = centeredLine(bodyBold, input.dateRange.toUpperCase(), centerX, dateRangeY, 48, {
     fill: branding.accentColor,
   });
 
   const subtitlePath = input.subtitle
-    ? centeredLine(bodyRegular, input.subtitle, centerX, subtitleY, 26, { fill: "#FFFFFF", opacity: 0.85 })
+    ? centeredLine(bodyRegular, input.subtitle, centerX, subtitleY, 30, { fill: "#FFFFFF", opacity: 0.85 })
     : "";
 
-  const wordmarkPath = centeredLine(bodyBold, branding.wordmark, centerX, SLIDE_HEIGHT - MARGIN, 24, {
+  const wordmarkPath = centeredLine(bodyBold, branding.wordmark, centerX, SLIDE_HEIGHT - MARGIN, 26, {
     fill: "#FFFFFF",
     opacity: 0.75,
   });
