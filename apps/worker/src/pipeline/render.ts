@@ -2,7 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { renderCoverSlide, renderEventSlide, type SlideBranding } from "@college-events/render";
 import { assetPath, contentAddressedPath, deleteAssets, saveAsset } from "../lib/storage.js";
-import { formatDateKicker, formatTimeRange, resolveVenueLabel } from "../lib/format.js";
+import { formatDateKicker, formatTimeRange, resolveDescriptionLabel, resolveVenueLabel } from "../lib/format.js";
 import { mondayOfWeek, formatWeekRangeLabel } from "../lib/week.js";
 import { resolveEventImage } from "./event-assets.js";
 import { resolveEventArtwork } from "./artwork.js";
@@ -121,13 +121,15 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     // last resort, for when the image we selected cannot be downloaded
     // right now.
     const image = await fetchImageSafely(imageUrl);
+    // Nightlife events routinely run past midnight (9PM-2:30AM) without
+    // being multi-day events in any real sense — the date range treatment
+    // is for a genuine multi-day event like a 2-day conference. Only
+    // widening the range for non-nightlife categories keeps a one-night
+    // party from getting a misleading "AUGUST 27TH-28TH" kicker.
+    const dateRangeEnd = event.category === "nightlife" ? null : (event.endAt?.toISOString() ?? null);
     const slideBuffer = await renderEventSlide({
       image,
-      // Multi-day events (spec item 6) get a date range on this one slide
-      // rather than looking like a single-day event — formatDateKicker only
-      // widens to a range when startAt/endAt actually land on different
-      // calendar days in the school's timezone.
-      date: formatDateKicker(event.startAt.toISOString(), school.timezone, event.endAt?.toISOString() ?? null),
+      date: formatDateKicker(event.startAt.toISOString(), school.timezone, dateRangeEnd),
       title: event.name,
       // A missing or access-gated venue ("Sign in to see location") reads as
       // a broken flyer, not a real one — resolveVenueLabel swaps it for the
@@ -135,7 +137,10 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
       venue: resolveVenueLabel(event.venue, school.shortName, event.city ?? school.city),
       time: formatTimeRange(event.startAt.toISOString(), event.endAt?.toISOString() ?? null, school.timezone),
       price: event.price,
-      description: event.description,
+      // A description that's just a re-statement of the same missing/gated
+      // location the venue line already shows adds nothing — omit it
+      // instead of printing a second, longer copy of "no venue."
+      description: resolveDescriptionLabel(event.description),
       category: event.category,
       branding,
     });

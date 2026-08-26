@@ -94,14 +94,29 @@ const RESTRICTED_VENUE_RE = /sign[\s-]?in|log[\s-]?in|members?\s+only|private\s+
 const PLACEHOLDER_VENUE_RE = /^(tbd|n\/a|na|unknown|none|location tbd)$/i;
 
 /**
- * "(USF) (Tampa) 🔒" when a venue is missing or is one of the
- * access-gated/placeholder patterns above; otherwise the venue as given.
- * `city` should be the event's own city when known, else the school's.
+ * "USF, Tampa" when a venue is missing or is one of the access-gated/
+ * placeholder patterns above; otherwise the venue as given. `city` should
+ * be the event's own city when known, else the school's.
  */
 export function resolveVenueLabel(venue: string | null, schoolShortName: string, city: string): string {
   const trimmed = venue?.trim() ?? "";
   const hidden = !trimmed || PLACEHOLDER_VENUE_RE.test(trimmed) || RESTRICTED_VENUE_RE.test(trimmed);
-  return hidden ? `(${schoolShortName}) (${city}) 🔒` : trimmed;
+  return hidden ? `${schoolShortName}, ${city}` : trimmed;
+}
+
+/**
+ * Some sources have nothing to say about an event beyond its (missing or
+ * access-gated) location, and that text ends up duplicated into the
+ * description field too — "Private Location (sign in to display), Tampa"
+ * as a whole description adds nothing the venue line doesn't already say.
+ * Returns null in that case so the slide just omits the description block
+ * entirely rather than printing a second, more verbose copy of "no venue."
+ */
+export function resolveDescriptionLabel(description: string | null): string | null {
+  const trimmed = description?.trim() ?? "";
+  if (!trimmed) return null;
+  if (PLACEHOLDER_VENUE_RE.test(trimmed) || RESTRICTED_VENUE_RE.test(trimmed)) return null;
+  return trimmed;
 }
 
 /** "@fau.events" — normalized to always carry exactly one leading "@",
