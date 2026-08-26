@@ -58,6 +58,15 @@ export async function addUniversityAction(formData: FormData) {
       timezone: String(formData.get("timezone") || "America/New_York"),
       nightlifeRadiusMiles: Number(formData.get("nightlifeRadiusMiles") || 25),
       instagramAccount: String(formData.get("instagramAccount") || "") || null,
+      // Without this, selectWeeklyPosts finds an empty schedule and quietly
+      // builds nothing — no error, no post, ever, for this school. Every
+      // school gets the same two strictly-separated lanes FAU was seeded
+      // with (see seed/data.ts's own comment on why a third, mixed-category
+      // lane was removed); only the labels are school-specific.
+      weeklySchedule: [
+        { postType: "monday_campus", dayOfWeek: 1, label: `This Week at ${shortName}`, hour: 9, minute: 0 },
+        { postType: "thursday_nightlife", dayOfWeek: 4, label: "Weekend Guide", hour: 15, minute: 0 },
+      ],
     })
     .returning();
 
