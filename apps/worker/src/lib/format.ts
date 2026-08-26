@@ -109,14 +109,26 @@ export function resolveVenueLabel(venue: string | null, schoolShortName: string,
  * access-gated) location, and that text ends up duplicated into the
  * description field too — "Private Location (sign in to display), Tampa"
  * as a whole description adds nothing the venue line doesn't already say.
- * Returns null in that case so the slide just omits the description block
- * entirely rather than printing a second, more verbose copy of "no venue."
+ * Rather than leaving the slide with nothing at all in that case, this
+ * points to wherever the event actually came from — "View details on
+ * bullsconnect.usf.edu" — so there's still somewhere for someone to go
+ * look up the real location. Never hardcodes a specific listing platform:
+ * the hostname is read off whatever the event's own sourceUrl says, so
+ * this works the same for every school's own campus events platform.
  */
-export function resolveDescriptionLabel(description: string | null): string | null {
+export function resolveDescriptionLabel(description: string | null, sourceUrl: string | null): string | null {
   const trimmed = description?.trim() ?? "";
-  if (!trimmed) return null;
-  if (PLACEHOLDER_VENUE_RE.test(trimmed) || RESTRICTED_VENUE_RE.test(trimmed)) return null;
-  return trimmed;
+  const isJunk = !trimmed || PLACEHOLDER_VENUE_RE.test(trimmed) || RESTRICTED_VENUE_RE.test(trimmed);
+  if (!isJunk) return trimmed;
+  if (sourceUrl) {
+    try {
+      const host = new URL(sourceUrl).hostname.replace(/^www\./, "");
+      return `View details on ${host}`;
+    } catch {
+      // malformed source URL — fall through to no description
+    }
+  }
+  return null;
 }
 
 /** "@fau.events" — normalized to always carry exactly one leading "@",

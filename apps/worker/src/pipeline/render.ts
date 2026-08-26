@@ -140,7 +140,7 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
       // A description that's just a re-statement of the same missing/gated
       // location the venue line already shows adds nothing — omit it
       // instead of printing a second, longer copy of "no venue."
-      description: resolveDescriptionLabel(event.description),
+      description: resolveDescriptionLabel(event.description, event.sourceUrl),
       category: event.category,
       branding,
     });
