@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
-import { db, events, eventSources, postEvents, sources } from "@college-events/db";
+import { db, events, eventSources, postEvents, posts, sources } from "@college-events/db";
 import type { AdapterType, EventCategory, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
 // Deep imports into each pipeline file rather than the @college-events/worker
@@ -201,6 +201,17 @@ export async function schedulePostAction(postId: string) {
   await schedulePost(postId);
   revalidatePath("/posts");
   revalidatePath(`/posts/${postId}`);
+}
+
+/** Overwrites the AI-generated caption with a human edit. Re-running
+ * selectWeeklyPosts on an unlocked post regenerates the caption from
+ * scratch, same as it always has — this only changes what's there right
+ * now, it doesn't pin the post against a future rebuild. */
+export async function updateCaptionAction(postId: string, formData: FormData) {
+  const caption = String(formData.get("caption") ?? "");
+  await db.update(posts).set({ caption: caption || null }).where(eq(posts.id, postId));
+  revalidatePath(`/posts/${postId}`);
+  revalidatePath("/posts");
 }
 
 export async function runProcessAction() {

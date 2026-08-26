@@ -1,7 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, eventSources, events, rawContent, sources } from "@college-events/db";
-import { EVENT_CATEGORIES } from "@college-events/core";
-import { mergeEventsAction, updateEventAction } from "@/lib/actions";
+import { mergeEventsAction } from "@/lib/actions";
+import { EditEventForm } from "@/components/EditEventForm";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -73,30 +73,15 @@ export default async function EventDetailPage({
               <>re-render any post using this event to see the updated text on the image.</>
             )}
           </p>
-          <form action={updateEventAction.bind(null, event.id)} style={{ padding: 16 }}>
-            <label>Name</label>
-            {postId ? <input type="hidden" name="postId" value={postId} /> : null}
-            <input name="name" defaultValue={event.name} />
-            <label>Venue</label>
-            <input name="venue" defaultValue={event.venue ?? ""} />
-            <label>Price</label>
-            <input name="price" defaultValue={event.price ?? ""} />
-            <label>Category</label>
-            <select name="category" defaultValue={event.category}>
-              {EVENT_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <label>Description</label>
-            <textarea name="description" rows={4} defaultValue={event.description ?? ""} />
-            <div style={{ marginTop: 14 }}>
-              <button className="btn btn-primary" type="submit">
-                Save changes
-              </button>
-            </div>
-          </form>
+          <EditEventForm
+            eventId={event.id}
+            postId={postId}
+            name={event.name}
+            venue={event.venue ?? ""}
+            price={event.price ?? ""}
+            category={event.category}
+            description={event.description ?? ""}
+          />
         </div>
 
         <div>

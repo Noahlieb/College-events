@@ -5,6 +5,7 @@ import { toDisplayUrl } from "@/lib/media";
 import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/actions";
 import { renderPostAction } from "@/lib/render-action";
 import { DownloadAllSlidesButton } from "@/components/DownloadSlidesButton";
+import { EditCaptionForm } from "@/components/EditCaptionForm";
 
 export const dynamic = "force-dynamic";
 
@@ -102,10 +103,12 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
 
       <div className="grid-2">
         <div className="panel">
-          <details className="caption-box">
-            <summary>Caption{post.caption ? ` — ${post.caption.length} characters, click to expand` : ""}</summary>
-            <pre>{post.caption ?? "(no caption generated yet)"}</pre>
-          </details>
+          <div className="panel-header">
+            <h2 style={{ margin: 0 }}>Caption</h2>
+          </div>
+          <div style={{ padding: 16 }}>
+            <EditCaptionForm postId={post.id} caption={post.caption ?? ""} />
+          </div>
         </div>
 
         <div className="panel">
