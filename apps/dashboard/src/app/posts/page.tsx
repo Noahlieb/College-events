@@ -56,6 +56,7 @@ export default async function PostsPage() {
               <th>Post</th>
               <th>Date</th>
               <th>Slides</th>
+              <th>Caption</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -69,6 +70,9 @@ export default async function PostsPage() {
                 </td>
                 <td>{post.scheduledDate}</td>
                 <td>{eventCount}</td>
+                <td style={{ maxWidth: 260, fontSize: 12, color: "var(--muted)" }}>
+                  {post.caption ? post.caption.split("\n")[0]!.slice(0, 90) : "—"}
+                </td>
                 <td>
                   <span className={`badge ${STATUS_BADGE[post.status] ?? "badge-muted"}`}>
                     {post.status.replace(/_/g, " ")}
@@ -83,7 +87,7 @@ export default async function PostsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="empty">
+                <td colSpan={6} className="empty">
                   No posts yet. Click "Build this week's posts" above.
                 </td>
               </tr>
