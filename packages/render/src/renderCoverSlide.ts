@@ -40,18 +40,20 @@ export async function renderCoverSlide(input: CoverSlideInput): Promise<Buffer> 
 
   const kickerBaseY = SLIDE_HEIGHT / 2 - kickerBlockH / 2;
   const dateRangeY = SLIDE_HEIGHT / 2 + kickerBlockH / 2 + 70;
-  const subtitleY = dateRangeY + 56;
+  const subtitleY = dateRangeY + 66;
 
   const kickerPaths = kicker.lines
     .map((line, i) => centeredLine(display, line, centerX, kickerBaseY + (i + 1) * kickerLineH, kicker.fontSize, { fill: "#FFFFFF" }))
     .join("\n");
 
-  const dateRangePath = centeredLine(bodyBold, input.dateRange.toUpperCase(), centerX, dateRangeY, 48, {
+  // Bumped again from 48/30 — still reading small next to the 140px
+  // kicker above it.
+  const dateRangePath = centeredLine(bodyBold, input.dateRange.toUpperCase(), centerX, dateRangeY, 60, {
     fill: branding.accentColor,
   });
 
   const subtitlePath = input.subtitle
-    ? centeredLine(bodyRegular, input.subtitle, centerX, subtitleY, 30, { fill: "#FFFFFF", opacity: 0.85 })
+    ? centeredLine(bodyRegular, input.subtitle, centerX, subtitleY, 38, { fill: "#FFFFFF", opacity: 0.85 })
     : "";
 
   const wordmarkPath = centeredLine(bodyBold, branding.wordmark, centerX, SLIDE_HEIGHT - MARGIN, 26, {

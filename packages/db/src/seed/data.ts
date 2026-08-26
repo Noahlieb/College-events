@@ -32,7 +32,7 @@ export const FAU_SCHOOL = {
   // main way an event ended up in a post that didn't match its category.
   weeklySchedule: [
     { postType: "monday_campus", dayOfWeek: 1, label: "This Week at FAU", hour: 9, minute: 0 },
-    { postType: "thursday_nightlife", dayOfWeek: 4, label: "Weekend Guide", hour: 15, minute: 0 },
+    { postType: "thursday_nightlife", dayOfWeek: 4, label: "Nightlife Events", hour: 15, minute: 0 },
   ],
   instagramAccount: "@faucampusscene",
 } as const;

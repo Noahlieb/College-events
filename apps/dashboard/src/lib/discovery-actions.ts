@@ -65,7 +65,7 @@ export async function addUniversityAction(formData: FormData) {
       // lane was removed); only the labels are school-specific.
       weeklySchedule: [
         { postType: "monday_campus", dayOfWeek: 1, label: `This Week at ${shortName}`, hour: 9, minute: 0 },
-        { postType: "thursday_nightlife", dayOfWeek: 4, label: "Weekend Guide", hour: 15, minute: 0 },
+        { postType: "thursday_nightlife", dayOfWeek: 4, label: "Nightlife Events", hour: 15, minute: 0 },
       ],
       // Same failure mode as a missing weeklySchedule: render.ts falls back
       // to a neutral default when this is empty, but that means every
