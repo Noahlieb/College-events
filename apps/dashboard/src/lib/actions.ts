@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
-import { db, events, eventSources, sources } from "@college-events/db";
+import { db, events, eventSources, postEvents, sources } from "@college-events/db";
 import type { AdapterType, EventCategory, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
 // Deep imports into each pipeline file rather than the @college-events/worker
@@ -21,18 +21,64 @@ import { approvePost, rejectPost } from "@college-events/worker/dist/pipeline/ap
 import { schedulePost } from "@college-events/worker/dist/pipeline/schedule.js";
 import { processSchoolRawContent } from "@college-events/worker/dist/pipeline/process.js";
 import { importCsvEvents } from "@college-events/worker/dist/pipeline/csv-import.js";
+import { selectWeeklyPosts } from "@college-events/worker/dist/pipeline/select-posts.js";
 import { getCurrentSchool } from "./current-school";
 
 // ── event actions ────────────────────────────────────────────────────
 
+/**
+ * Re-runs post assembly (database only — no rendering, no external HTTP
+ * call) right after an event's status changes, so approving or rejecting
+ * one event is immediately reflected in whichever week/lane post it
+ * belongs to instead of waiting for a separate "Build this week's posts"
+ * click. Selection alone is cheap (a handful of DB queries plus one small
+ * AI caption call per lane); the render-service HTTP call — the actually
+ * expensive part — stays a deliberate, separate action.
+ *
+ * Best-effort: a selection failure here must never turn a successful
+ * approve/reject into a visible error. It already happened; the post just
+ * won't reflect it until the next successful sync (the "Build this week's
+ * posts" button, or the next approve/reject on this school).
+ */
+async function syncWeeklyPosts(schoolId: string): Promise<void> {
+  try {
+    await selectWeeklyPosts(schoolId);
+  } catch {
+    // See doc comment above.
+  }
+}
+
 export async function approveEventAction(eventId: string) {
-  await db.update(events).set({ status: "active", updatedAt: new Date() }).where(eq(events.id, eventId));
+  const [event] = await db
+    .update(events)
+    .set({ status: "active", updatedAt: new Date() })
+    .where(eq(events.id, eventId))
+    .returning({ schoolId: events.schoolId });
+  if (event) await syncWeeklyPosts(event.schoolId);
   revalidatePath("/events");
+  revalidatePath("/posts");
+  revalidatePath("/");
 }
 
 export async function rejectEventAction(eventId: string) {
-  await db.update(events).set({ status: "rejected", updatedAt: new Date() }).where(eq(events.id, eventId));
+  const [event] = await db
+    .update(events)
+    .set({ status: "rejected", updatedAt: new Date() })
+    .where(eq(events.id, eventId))
+    .returning({ schoolId: events.schoolId });
+  if (event) {
+    // A rejected event must never keep showing up in a post's slides — a
+    // rebuild alone isn't enough, because a post a human already
+    // approved/scheduled is deliberately locked against rebuilds (see
+    // select-posts.ts). Removing it here works regardless of that post's
+    // lock state; the rebuild below is what backfills the freed slot for
+    // any post still open to it.
+    await db.delete(postEvents).where(eq(postEvents.eventId, eventId));
+    await syncWeeklyPosts(event.schoolId);
+  }
   revalidatePath("/events");
+  revalidatePath("/posts");
+  revalidatePath("/");
 }
 
 export async function forceIncludeEventAction(eventId: string) {
@@ -40,7 +86,10 @@ export async function forceIncludeEventAction(eventId: string) {
   if (!event) return;
   const flags = Array.from(new Set([...event.flags, "force_include"]));
   await db.update(events).set({ status: "active", flags, updatedAt: new Date() }).where(eq(events.id, eventId));
+  await syncWeeklyPosts(event.schoolId);
   revalidatePath("/events");
+  revalidatePath("/posts");
+  revalidatePath("/");
 }
 
 export async function updateEventAction(eventId: string, formData: FormData) {

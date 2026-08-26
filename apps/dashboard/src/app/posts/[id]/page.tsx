@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { toDisplayUrl } from "@/lib/media";
 import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/actions";
 import { renderPostAction } from "@/lib/render-action";
+import { DownloadAllSlidesButton } from "@/components/DownloadSlidesButton";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,14 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
       <div className="panel">
         <div className="panel-header">
           <h2 style={{ margin: 0 }}>Carousel preview</h2>
-          <form action={renderPostAction.bind(null, post.id)}>
-            <button className="btn btn-sm" type="submit" disabled={!canRender}>
-              {assets.length > 0 ? "Re-render" : "Render"}
-            </button>
-          </form>
+          <div className="btn-row" style={{ gap: 8 }}>
+            {assets.length > 0 && <DownloadAllSlidesButton assetIds={assets.map((a) => a.id)} />}
+            <form action={renderPostAction.bind(null, post.id)}>
+              <button className="btn btn-sm" type="submit" disabled={!canRender}>
+                {assets.length > 0 ? "Re-render" : "Render"}
+              </button>
+            </form>
+          </div>
         </div>
         {assets.length > 0 ? (
           <div className="ig-card">
@@ -81,6 +85,13 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={toDisplayUrl(a.storageUrl, a.id)} alt={a.template} />
                 </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, padding: "8px 0 0", flexWrap: "wrap" }}>
+              {assets.map((a, i) => (
+                <a key={a.id} href={`/api/assets/${a.id}/download`} className="btn btn-sm" style={{ fontSize: 11 }}>
+                  ↓ Slide {i + 1}
+                </a>
               ))}
             </div>
           </div>

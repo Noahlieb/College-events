@@ -224,7 +224,13 @@ export async function processSchoolRawContent(
         { sourceId: source.id, sourcePriority: source.priority, startAt: parsedDates.startAt },
       ]);
       const lowConfidence = extracted.confidence < 0.4;
-      const status = verificationStatus === "conflict" || lowConfidence ? "candidate" : "active";
+      // Every newly-discovered event needs a human Approve click before it's
+      // live — a high-confidence extraction still isn't the same as a
+      // person having actually looked at it. verificationStatus (the
+      // needs_review/high_confidence/conflict badge) is a separate signal
+      // for how much a reviewer should scrutinize it, not a gate on
+      // whether it goes live at all.
+      const status = "candidate";
       const flags = lowConfidence ? ["low_confidence"] : [];
       // Only the athletics feed reports where a game is played. Flagging it
       // here rather than at selection keeps the fact with the event, so a
@@ -471,7 +477,11 @@ async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
           }
         : {}),
       verificationStatus,
-      status: verificationStatus === "conflict" ? "candidate" : existing.status === "candidate" ? "active" : existing.status,
+      // A second source corroborating this event resolves the CONFLICT
+      // flag, but corroboration isn't a human's approval — an event a
+      // reviewer hasn't touched yet stays candidate either way. Only ever
+      // moves *toward* needing review (conflict), never away from it.
+      status: verificationStatus === "conflict" ? "candidate" : existing.status,
       flags:
         verificationStatus === "conflict"
           ? Array.from(new Set([...existing.flags, `CONFLICT — time (${reason})`]))

@@ -5,6 +5,28 @@ import { SLIDE_HEIGHT, SLIDE_WIDTH, type EventSlideInput } from "./types.js";
 const MARGIN = 64;
 const CONTENT_WIDTH = SLIDE_WIDTH - MARGIN * 2;
 
+/**
+ * White text over an arbitrary flyer photo, backed only by the bottom
+ * gradient, disappears whenever that flyer happens to be bright or busy in
+ * exactly the region the title lands — plenty of real flyers are white or
+ * light-colored, and a long title can push past however far up the
+ * gradient's fixed-height fade actually darkens. Rather than trying to
+ * predict every flyer's brightness and re-tune the gradient's math for it,
+ * every text path gets its own black outline: legible against literally
+ * any background by construction, independent of what's under it.
+ */
+function outlinedFill(fill: string, fontSize: number, fillOpacity?: number): Record<string, string | number> {
+  const attrs: Record<string, string | number> = {
+    fill,
+    stroke: "#000000",
+    "stroke-width": Math.max(2, Math.round(fontSize * 0.08)),
+    "stroke-linejoin": "round",
+    "paint-order": "stroke fill",
+  };
+  if (fillOpacity !== undefined) attrs["fill-opacity"] = fillOpacity;
+  return attrs;
+}
+
 function linesToPaths(
   font: ReturnType<typeof displayFont>,
   lines: string[],
@@ -90,19 +112,29 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   }
 
   cursorY += title.fontSize * 0.88;
-  parts.push(linesToPaths(display, title.lines, MARGIN, cursorY, titleLineH, title.fontSize, { fill: "#FFFFFF" }));
+  parts.push(linesToPaths(display, title.lines, MARGIN, cursorY, titleLineH, title.fontSize, outlinedFill("#FFFFFF", title.fontSize)));
   cursorY += titleLineH * (title.lines.length - 1) + titleLineH * 0.3 + gapAfterTitle;
 
   if (meta) {
     cursorY += meta.fontSize * 0.85;
-    parts.push(linesToPaths(bodyBold, meta.lines, MARGIN, cursorY, metaLineH, meta.fontSize, { fill: "#FFFFFF", opacity: 0.95 }));
+    parts.push(
+      linesToPaths(bodyBold, meta.lines, MARGIN, cursorY, metaLineH, meta.fontSize, outlinedFill("#FFFFFF", meta.fontSize, 0.95)),
+    );
     cursorY += metaLineH * (meta.lines.length - 1) + metaLineH * 0.3 + gapAfterMeta;
   }
 
   if (description) {
     cursorY += description.fontSize * 0.85;
     parts.push(
-      linesToPaths(bodyRegular, description.lines, MARGIN, cursorY, descLineH, description.fontSize, { fill: "#FFFFFF", opacity: 0.85 }),
+      linesToPaths(
+        bodyRegular,
+        description.lines,
+        MARGIN,
+        cursorY,
+        descLineH,
+        description.fontSize,
+        outlinedFill("#FFFFFF", description.fontSize, 0.85),
+      ),
     );
     cursorY += descLineH * (description.lines.length - 1) + descLineH * 0.3;
   }
