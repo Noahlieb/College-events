@@ -221,7 +221,13 @@ async function buildWeek({
     let postId: string;
     if (existingPost) {
       postId = existingPost.id;
-      await db.update(posts).set({ status, updatedAt: new Date() }).where(eq(posts.id, postId));
+      // title tracks slot.label too, not just status — otherwise an admin
+      // renaming a lane's label (e.g. "Weekend Guide" -> "Nightlife
+      // Events") only ever takes effect on posts created after the rename;
+      // every already-existing unlocked post keeps showing the old label
+      // on its cover slide and in the dashboard forever, since rebuilding
+      // it never touches title at all.
+      await db.update(posts).set({ status, title: slot.label, updatedAt: new Date() }).where(eq(posts.id, postId));
       await db.delete(postEvents).where(eq(postEvents.postId, postId));
     } else {
       const [created] = await db
