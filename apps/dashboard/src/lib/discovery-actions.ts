@@ -67,6 +67,18 @@ export async function addUniversityAction(formData: FormData) {
         { postType: "monday_campus", dayOfWeek: 1, label: `This Week at ${shortName}`, hour: 9, minute: 0 },
         { postType: "thursday_nightlife", dayOfWeek: 4, label: "Weekend Guide", hour: 15, minute: 0 },
       ],
+      // Same failure mode as a missing weeklySchedule: render.ts falls back
+      // to a neutral default when this is empty, but that means every
+      // school skipping this form field looks the same on every slide
+      // until someone notices and backfills it by hand. Collecting it here
+      // (with the same neutral colors as that fallback for defaultValue)
+      // means a school only looks generic if that was actually chosen.
+      branding: {
+        primaryColor: String(formData.get("primaryColor") || "#1A1A2E"),
+        secondaryColor: String(formData.get("secondaryColor") || "#16213E"),
+        accentColor: String(formData.get("accentColor") || "#E94560"),
+        backgroundColor: String(formData.get("backgroundColor") || "#0B0B0F"),
+      },
     })
     .returning();
 

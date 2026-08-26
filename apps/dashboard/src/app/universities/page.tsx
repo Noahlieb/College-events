@@ -118,6 +118,31 @@ export default async function UniversitiesPage() {
               </div>
             </div>
           </div>
+          <div style={{ marginTop: 10 }}>
+            <label>Brand colors</label>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -4, marginBottom: 8 }}>
+              Used on every rendered slide and cover page for this school — pill backgrounds, the
+              cover gradient, the date/accent text. Leave as-is for a neutral default.
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Primary
+                <input name="primaryColor" type="color" defaultValue="#1A1A2E" />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Secondary
+                <input name="secondaryColor" type="color" defaultValue="#16213E" />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Accent
+                <input name="accentColor" type="color" defaultValue="#E94560" />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Background
+                <input name="backgroundColor" type="color" defaultValue="#0B0B0F" />
+              </label>
+            </div>
+          </div>
           <div style={{ marginTop: 14 }}>
             <button className="btn btn-primary" type="submit">
               Create university
