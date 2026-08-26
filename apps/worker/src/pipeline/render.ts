@@ -43,7 +43,19 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
   const [school] = await db.select().from(schools).where(eq(schools.id, post.schoolId)).limit(1);
   if (!school) throw new Error(`Unknown school for post ${postId}`);
 
-  const brandingConfig = school.branding as Omit<SlideBranding, "wordmark">;
+  // Merged rather than used as-is: a school added without every branding
+  // field set (or none at all — the "Add University" form has no color
+  // pickers) would otherwise put the literal string "undefined" into an
+  // SVG fill/gradient-stop attribute, rendering as broken/invisible text
+  // on every slide. A neutral fallback per-field means a school missing
+  // some or all of its real colors still renders something legible.
+  const DEFAULT_BRANDING: Omit<SlideBranding, "wordmark"> = {
+    primaryColor: "#1A1A2E",
+    secondaryColor: "#16213E",
+    accentColor: "#E94560",
+    backgroundColor: "#0B0B0F",
+  };
+  const brandingConfig = { ...DEFAULT_BRANDING, ...(school.branding as Partial<Omit<SlideBranding, "wordmark">>) };
   const branding: SlideBranding = {
     ...brandingConfig,
     wordmark: school.instagramAccount ?? `@${school.shortName.toLowerCase()}`,

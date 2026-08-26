@@ -27,6 +27,16 @@ function outlinedFill(fill: string, fontSize: number, fillOpacity?: number): Rec
   return attrs;
 }
 
+/** Same attribute-string formatting textPathElement uses internally, for
+ * the one spot (the category pill) that needs a hand-built <path> because
+ * its `d` comes from textToPathData directly rather than through
+ * textPathElement. */
+function attrString(attrs: Record<string, string | number>): string {
+  return Object.entries(attrs)
+    .map(([key, value]) => `${key}="${value}"`)
+    .join(" ");
+}
+
 function linesToPaths(
   font: ReturnType<typeof displayFont>,
   lines: string[],
@@ -107,7 +117,14 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
 
   if (input.date) {
     cursorY += dateH * 0.75; // move to baseline for this block
-    parts.push(textPathElement(bodyBold, input.date.toUpperCase(), MARGIN, cursorY, 34, { fill: branding.accentColor }));
+    // Previously bare accentColor text with nothing behind it — invisible
+    // whenever that color was too close to whatever the flyer happened to
+    // be in that spot. Same outline treatment as the title fixes it the
+    // same way, without needing to hand-position a background pill against
+    // font metrics this file doesn't have precise access to.
+    parts.push(
+      textPathElement(bodyBold, input.date.toUpperCase(), MARGIN, cursorY, 34, outlinedFill(branding.accentColor, 34)),
+    );
     cursorY += dateH * 0.25 + gapAfterDate;
   }
 
@@ -139,6 +156,11 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
     cursorY += descLineH * (description.lines.length - 1) + descLineH * 0.3;
   }
 
+  // Both corner pills sit directly on the photo with nothing else behind
+  // them — a semi-transparent pill alone isn't reliably dark/light enough
+  // against every flyer, so the text inside gets the same outline
+  // treatment as the title, on top of a near-opaque pill rather than a
+  // faint one.
   const categoryLabel = input.category.replace(/_/g, " ").toUpperCase();
   const categoryFontSize = 18;
   const categoryTextWidth = measureWidth(bodyBold, categoryLabel, categoryFontSize);
@@ -146,8 +168,8 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const categoryLabelPathD = textToPathData(bodyBold, categoryLabel, MARGIN + 20, 72, categoryFontSize);
   const categoryPill = `
     <g>
-      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="${branding.primaryColor}" opacity="0.92" />
-      <path d="${categoryLabelPathD}" fill="#FFFFFF" />
+      <rect x="${MARGIN}" y="48" rx="18" ry="18" width="${categoryPillWidth}" height="36" fill="${branding.primaryColor}" opacity="0.97" />
+      <path d="${categoryLabelPathD}" ${attrString(outlinedFill("#FFFFFF", categoryFontSize))} />
     </g>`;
 
   const wordmarkFontSize = 18;
@@ -156,8 +178,8 @@ export function buildEventSlideOverlaySvg(input: EventSlideInput): string {
   const wordmarkPillX = SLIDE_WIDTH - MARGIN - wordmarkWidth;
   const wordmark = `
     <g>
-      <rect x="${wordmarkPillX}" y="48" rx="18" ry="18" width="${wordmarkWidth}" height="36" fill="#000000" opacity="0.4" />
-      ${textPathElement(bodyBold, branding.wordmark, wordmarkPillX + (wordmarkWidth - wordmarkTextWidth) / 2, 72, wordmarkFontSize, { fill: "#FFFFFF" })}
+      <rect x="${wordmarkPillX}" y="48" rx="18" ry="18" width="${wordmarkWidth}" height="36" fill="#000000" opacity="0.7" />
+      ${textPathElement(bodyBold, branding.wordmark, wordmarkPillX + (wordmarkWidth - wordmarkTextWidth) / 2, 72, wordmarkFontSize, outlinedFill("#FFFFFF", wordmarkFontSize))}
     </g>`;
 
   return `
