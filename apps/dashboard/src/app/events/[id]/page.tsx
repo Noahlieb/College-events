@@ -2,6 +2,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { db, eventSources, events, rawContent, sources } from "@college-events/db";
 import { mergeEventsAction } from "@/lib/actions";
 import { EditEventForm } from "@/components/EditEventForm";
+import { RegenerateArtworkForm } from "@/components/RegenerateArtworkForm";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -84,10 +85,27 @@ export default async function EventDetailPage({
           />
         </div>
 
-        <div>
-          <div className="panel">
-            <div className="panel-header">
-              <h2 style={{ margin: 0 }}>Scores & confidence</h2>
+        <div className="panel">
+          <div className="panel-header">
+            <h2 style={{ margin: 0 }}>AI artwork</h2>
+            <span className="badge badge-muted" style={{ fontSize: 11 }}>
+              {event.generationStatus.replace(/_/g, " ")}
+            </span>
+          </div>
+          {event.sourceImage && (
+            <div style={{ padding: "12px 16px 0" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={event.sourceImage} alt="" style={{ maxWidth: 220, borderRadius: 8 }} />
+            </div>
+          )}
+          <RegenerateArtworkForm eventId={event.id} comment={event.artworkComment ?? ""} />
+        </div>
+      </div>
+
+      <div>
+        <div className="panel">
+          <div className="panel-header">
+            <h2 style={{ margin: 0 }}>Scores & confidence</h2>
             </div>
             <table>
               <tbody>
@@ -165,7 +183,6 @@ export default async function EventDetailPage({
               </div>
             </form>
           </div>
-        </div>
       </div>
     </>
   );

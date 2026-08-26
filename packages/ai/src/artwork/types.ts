@@ -18,6 +18,11 @@ export interface ArtworkEventFacts {
   /** ISO start, used for season/time-of-day feel, never drawn as text. */
   startAt: string;
   description: string | null;
+  /** A reviewer's freeform creative direction for this generation only
+   * ("more blue lighting", "no confetti") — appended to the prompt as an
+   * instruction, never as text to render (buildArtworkPrompt's "no text of
+   * any kind" rule still applies regardless of what this says). */
+  adjustmentComment?: string | null;
 }
 
 export interface GeneratedEventAsset {
@@ -107,11 +112,19 @@ export function buildArtworkPrompt(event: ArtworkEventFacts): string {
     `${timeOfDay} feel, ${month} season.`,
     "Cinematic, high production value, richly coloured, suitable as a backdrop.",
     // Stated as a hard requirement rather than a preference: the
-    // deterministic renderer owns every word on the finished slide.
+    // deterministic renderer owns every word on the finished slide. Placed
+    // before the reviewer's own direction (below) so a comment reading like
+    // "add a banner with the date" can't plausibly look like it overrides
+    // this instead of just being ignored.
     "ABSOLUTELY NO text, letters, numbers, words, signage, logos, watermarks or writing of any kind.",
     "No recognisable real people, no faces, no celebrity likenesses, no copyrighted characters or brands.",
     "Leave the lower third visually calm and uncluttered for text overlay.",
-  ].join(" ");
+    event.adjustmentComment?.trim()
+      ? `Additional creative direction from the reviewer: ${event.adjustmentComment.trim()}`
+      : null,
+  ]
+    .filter((line): line is string => !!line)
+    .join(" ");
 }
 
 /**

@@ -62,6 +62,7 @@ function factsFor(event: typeof events.$inferSelect): ArtworkEventFacts {
     city: event.city,
     startAt: event.startAt.toISOString(),
     description: event.description,
+    adjustmentComment: event.artworkComment,
   };
 }
 

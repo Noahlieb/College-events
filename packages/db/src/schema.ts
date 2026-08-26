@@ -401,6 +401,13 @@ export const events = pgTable("events", {
   generationInputHash: text("generation_input_hash"),
   /** Why the current selection won, in words, for the review UI. */
   selectedAssetReason: text("selected_asset_reason"),
+  /** A reviewer's freeform creative direction ("more blue lighting", "no
+   * confetti") for the next AI regeneration of this event's artwork.
+   * Deliberately excluded from artworkInputFingerprint — editing this
+   * alone must never trigger an unattended regeneration on the next batch
+   * run; it only takes effect through the operator's own explicit
+   * "Regenerate image" action (force: true). */
+  artworkComment: text("artwork_comment"),
   /** The winning asset among every candidate from every linked source.
    * Nullable: an event with no artwork anywhere renders a generated
    * placeholder, which is deliberately *not* stored as a candidate so it
