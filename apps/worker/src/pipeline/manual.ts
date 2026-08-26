@@ -2,8 +2,10 @@ import { and, eq, gte, lte, ne } from "drizzle-orm";
 import { db, events, eventSources, rawContent, schools, sources } from "@college-events/db";
 import { areDuplicates, computeVerificationStatus, daysUntil, parseEventDate, scoreEvent, type EventCategory } from "@college-events/core";
 import { buildManualRawContent, type ManualEventInput } from "@college-events/ingestion";
+import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles } from "../lib/geo-heuristic.js";
 import { log } from "../lib/log.js";
+import { shortenDescriptionIfNeeded } from "../lib/summarize.js";
 
 /**
  * Manual event entry (spec §33). Reuses the exact same raw_content shape,
@@ -16,6 +18,7 @@ export async function submitManualEvent(
   schoolId: string,
   manualSourceId: string,
   input: ManualEventInput,
+  aiProvider: AIProvider = createAIProvider(),
 ): Promise<{ eventId: string; merged: boolean }> {
   const [school] = await db.select().from(schools).where(eq(schools.id, schoolId)).limit(1);
   if (!school) throw new Error(`Unknown school ${schoolId}`);
@@ -47,10 +50,33 @@ export async function submitManualEvent(
   if (!raw) throw new Error("Failed to insert manual raw_content");
 
   const category: EventCategory = input.category;
+
+  // If the CSV/manual entry has no venue but a flyer image was submitted,
+  // try reading it off the flyer before falling back to the renderer's
+  // "no location" treatment. Bounded to venue only (not price) so a large
+  // CSV import with hundreds of flyer URLs doesn't turn into hundreds of
+  // vision-model calls — venue is also the more visually reliable of the
+  // two to recover this way. Best-effort: a failed/slow OCR call must
+  // never block the event from being created.
+  let venue = input.venue;
+  if (!venue && input.flyerUrl) {
+    try {
+      const flyerAnalysis = await aiProvider.analyzeFlyer({
+        schoolContext: { name: school.name, shortName: school.shortName, city: school.city, state: school.state, timezone: school.timezone },
+        imageUrl: input.flyerUrl,
+        caption: input.description,
+        currentDate: new Date().toISOString().slice(0, 10),
+      });
+      venue = flyerAnalysis.extracted.venue ?? venue;
+    } catch {
+      // leave venue null — the renderer's own missing-location fallback covers it
+    }
+  }
+
   // A caller that already knows the city (e.g. a CSV import) gets a real
   // lookup; plain manual entries fall back to the previous best-effort
   // guess from the venue text (which rarely names a city directly).
-  const distanceMiles = estimateDistanceMiles(input.city ?? input.venue, school.city);
+  const distanceMiles = estimateDistanceMiles(input.city ?? venue, school.city);
   const daysOut = daysUntil(parsedDates.startAt, school.timezone);
   // Deliberately does NOT reuse the source-category shortcut from
   // isCampusAffiliated() in geo-heuristic.ts: the "Manual Entry" utility
@@ -83,7 +109,7 @@ export async function submitManualEvent(
       event: c,
       result: areDuplicates(
         { id: c.id, name: c.name, startAt: c.startAt.toISOString(), venue: c.venue, organization: c.organization },
-        { id: raw.id, name: input.name, startAt: parsedDates.startAt, venue: input.venue, organization: null },
+        { id: raw.id, name: input.name, startAt: parsedDates.startAt, venue, organization: null },
       ),
     }))
     .filter((m) => m.result.isDuplicate)
@@ -99,15 +125,17 @@ export async function submitManualEvent(
     { sourceId: manualSourceId, sourcePriority: manualSource.priority, startAt: parsedDates.startAt },
   ]);
 
+  const description = await shortenDescriptionIfNeeded(aiProvider, input.description, input.name);
+
   const [event] = await db
     .insert(events)
     .values({
       schoolId,
       name: input.name,
-      description: input.description,
+      description,
       startAt: new Date(parsedDates.startAt),
       endAt: parsedDates.endAt ? new Date(parsedDates.endAt) : null,
-      venue: input.venue,
+      venue,
       city: input.city ?? null,
       latitude: input.latitude ?? null,
       longitude: input.longitude ?? null,
@@ -121,7 +149,17 @@ export async function submitManualEvent(
       sourceImage: input.flyerUrl,
       originalRawContentId: raw.id,
       confidenceScore: 1, // human-verified
-      fieldConfidence: { eventName: 1, date: 1, startTime: 1, endTime: input.endTime ? 1 : 0, venue: 1, price: input.price ? 1 : 0, category: 1 },
+      fieldConfidence: {
+        eventName: 1,
+        date: 1,
+        startTime: 1,
+        endTime: input.endTime ? 1 : 0,
+        // 1 when the human/CSV supplied it directly, a notch down when the
+        // flyer-OCR recovery above is what filled it in, 0 when neither did.
+        venue: input.venue ? 1 : venue ? 0.6 : 0,
+        price: input.price ? 1 : 0,
+        category: 1,
+      },
       relevanceScore: bucketScores.overall,
       bucketScores,
       verificationStatus,

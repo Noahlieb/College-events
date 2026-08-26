@@ -29,6 +29,7 @@ import {
   markAssetDiscoveryComplete,
   recordObservationImage,
 } from "./event-assets.js";
+import { shortenDescriptionIfNeeded } from "../lib/summarize.js";
 
 export interface ProcessSummary {
   inspected: number;
@@ -211,6 +212,7 @@ export async function processSchoolRawContent(
           parsedStartAt: parsedDates.startAt,
           mediaUrl: raw.mediaUrl,
           assetOffers: assetOffersFrom(raw.rawMetadata),
+          aiProvider,
         });
         await db
           .update(rawContent)
@@ -246,12 +248,18 @@ export async function processSchoolRawContent(
         flags.push(AWAY_GAME_FLAG);
       }
 
+      const shortDescription = await shortenDescriptionIfNeeded(
+        aiProvider,
+        extracted.description,
+        extracted.event_name ?? "Untitled event",
+      );
+
       const [event] = await db
         .insert(events)
         .values({
           schoolId,
           name: extracted.event_name ?? "Untitled event",
-          description: extracted.description,
+          description: shortDescription,
           startAt: new Date(parsedDates.startAt),
           endAt: parsedDates.endAt ? new Date(parsedDates.endAt) : null,
           venue: extracted.venue,
@@ -379,6 +387,7 @@ interface MergeArgs {
   school: typeof schools.$inferSelect;
   existingEventId: string;
   rawContentId: string;
+  aiProvider: AIProvider;
   /** Image this observation carried, offered as an asset candidate. */
   mediaUrl?: string | null;
   /** Everything the adapter offered for this observation. */
@@ -406,7 +415,7 @@ interface MergeArgs {
  * authoritative information").
  */
 async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
-  const { schoolId, existingEventId, rawContentId, source, extracted, parsedStartAt } = args;
+  const { schoolId, existingEventId, rawContentId, source, extracted, parsedStartAt, aiProvider } = args;
 
   await db.insert(eventSources).values({
     eventId: existingEventId,
@@ -462,6 +471,10 @@ async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
   const maxOtherPriority = Math.max(0, ...existingSourcePriorities.map((p) => p.priority));
   const newSourceIsMoreAuthoritative = source.priority > maxOtherPriority;
 
+  const mergedDescription = newSourceIsMoreAuthoritative
+    ? await shortenDescriptionIfNeeded(aiProvider, extracted.description ?? existing.description, extracted.event_name ?? existing.name)
+    : existing.description;
+
   await db
     .update(events)
     .set({
@@ -472,7 +485,7 @@ async function mergeIntoExistingEvent(args: MergeArgs): Promise<void> {
             city: extracted.city ?? existing.city,
             price: extracted.price ?? existing.price,
             ageRequirement: extracted.age_requirement ?? existing.ageRequirement,
-            description: extracted.description ?? existing.description,
+            description: mergedDescription,
             organization: extracted.organization ?? existing.organization,
           }
         : {}),
