@@ -205,20 +205,48 @@ export class MockAIProvider implements AIProvider {
     return { summary: summary || input.name };
   }
 
+  /**
+   * Deterministic stand-in for the real day-by-day caption format (see
+   * prompts.ts's few-shot reference) — this is what runs whenever no AI
+   * provider API key is configured, so it needs to produce the same shape
+   * a human would actually want to post, not just a placeholder string.
+   */
   async generateCaption(input: GenerateCaptionInput): Promise<Caption> {
-    const titles: Record<GenerateCaptionInput["postType"], string> = {
-      monday_campus: `THIS WEEK AT ${input.schoolShortName} 🦉`,
-      midweek_activities: `THINGS TO DO THIS WEEK 🎟️`,
-      thursday_nightlife: `${input.schoolShortName} WEEKEND GUIDE 🌙`,
-      custom: input.schoolName,
-    };
-    const intro = titles[input.postType];
-    const body =
-      input.postType === "thursday_nightlife"
-        ? "Your weekend starts here. Save this post so you don't miss anything — swipe for the full lineup."
-        : "Here are some of the best things happening this week. Save this post and tag a friend who's coming with you.";
-    const caption = `${intro}\n\n${body}`;
-    return { caption, hashtags: [] };
+    const isNightlife = input.postType === "thursday_nightlife";
+
+    const byDay = new Map<string, typeof input.events>();
+    for (const e of input.events) {
+      const list = byDay.get(e.dayLabel) ?? [];
+      list.push(e);
+      byDay.set(e.dayLabel, list);
+    }
+    const dayEmojis = ["📅", "🎉", "⚡", "🎯", "🔥", "🌟", "🎊"];
+    const days = [...byDay.entries()].map(([dayLabel, dayEvents], i) => {
+      const emoji = dayEmojis[i % dayEmojis.length];
+      const bullets = dayEvents.map((e) => `• ${e.name}${e.venue ? ` at ${e.venue}` : ""}, ${e.time}`).join("\n");
+      return `${emoji} ${dayLabel}\n${bullets}`;
+    });
+
+    const intro = isNightlife
+      ? `THIS WEEK IN ${input.schoolShortName} NIGHTLIFE 🌙🔥\n${input.weekRangeLabel} brings the weekend lineup.`
+      : `${input.weekRangeLabel} is packed with campus events, student orgs, and things to do at ${input.schoolShortName}.`;
+
+    const cta = isNightlife
+      ? "Save this post for the weekend 👀\nSend it to your group chat and tag who you're going out with ⬇️"
+      : "Save this post so you don't miss anything 👀\nTag who you're going with ⬇️";
+
+    const follow = isNightlife
+      ? `Follow ${input.instagramHandle} for ${input.schoolShortName} campus events, nightlife, sports, and things to do around ${input.city}.`
+      : `Follow ${input.instagramHandle} for what's happening on and around campus every week.`;
+
+    const hashtags = [
+      `#${input.schoolShortName}`,
+      `#${input.schoolShortName}Events`,
+      isNightlife ? `#${input.schoolShortName}Nightlife` : `#${input.schoolShortName}Campus`,
+    ];
+
+    const caption = [intro, "", days.join("\n\n"), "", cta, "", follow, "", hashtags.join(" ")].join("\n");
+    return { caption, hashtags };
   }
 
   async compareDuplicates(input: CompareDuplicatesInput): Promise<DuplicateComparison> {

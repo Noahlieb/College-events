@@ -82,9 +82,13 @@ describe("MockAIProvider.generateCaption", () => {
       postType: "monday_campus",
       schoolName: schoolContext.name,
       schoolShortName: schoolContext.shortName,
-      events: [{ name: "Involvement Fair", venue: "Student Union", date: "2026-08-24" }],
+      city: schoolContext.city,
+      instagramHandle: "@fau.events",
+      weekRangeLabel: "August 24 to 30",
+      events: [{ name: "Involvement Fair", venue: "Student Union", dayLabel: "MONDAY 8/24", time: "11AM to 1PM" }],
     });
     expect(result.caption).toContain("FAU");
+    expect(result.caption).toContain("Involvement Fair");
     expect(result.caption.length).toBeGreaterThan(10);
   });
 });

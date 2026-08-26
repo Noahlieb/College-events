@@ -12,6 +12,7 @@ import {
 import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
+import { formatCaptionDayLabel, formatCaptionTimeRange, formatInstagramHandle, formatWeekRangeSentence } from "../lib/format.js";
 
 const MAX_SLIDES_PER_POST = 8;
 
@@ -241,7 +242,15 @@ async function buildWeek({
           postType: slot.postType as never,
           schoolName: school.name,
           schoolShortName: school.shortName,
-          events: selectedEvents.map((e) => ({ name: e.name, venue: e.venue, date: e.startAt.toISOString().slice(0, 10) })),
+          city: school.city,
+          instagramHandle: formatInstagramHandle(school.instagramAccount, school.shortName),
+          weekRangeLabel: formatWeekRangeSentence(weekMonday),
+          events: selectedEvents.map((e) => ({
+            name: e.name,
+            venue: e.venue,
+            dayLabel: formatCaptionDayLabel(e.startAt.toISOString(), school.timezone),
+            time: formatCaptionTimeRange(e.startAt.toISOString(), e.endAt?.toISOString() ?? null, school.timezone),
+          })),
         });
         await db.update(posts).set({ caption: caption.caption }).where(eq(posts.id, postId));
       } catch (err) {

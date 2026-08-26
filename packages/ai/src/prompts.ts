@@ -88,29 +88,95 @@ export function summarizeEventPrompt(input: SummarizeEventInput): { system: stri
   return { system, user };
 }
 
+/**
+ * Few-shot reference for the campus lane. Real FAU caption the user
+ * supplied as "make it look like this" — abstract format instructions were
+ * tried first and consistently drifted on the details that matter (which
+ * lines get a header, where the day emoji goes, exactly how the CTA block
+ * reads); showing the model a caption that already has all of that right
+ * holds format fidelity far better than describing the format in prose.
+ */
+const CAMPUS_CAPTION_EXAMPLE = `August 24 to 30 is packed with campus events, student orgs, and home games.
+
+📚 MONDAY 8/24
+• Welcome to Your Library #FirstDay, 11AM to 1PM
+• Phi Beta Sigma Welcome Back BBQ, 6PM to 10PM
+
+🎉 TUESDAY 8/25
+• First-Gen Welcome Reception, 5PM to 7PM
+• Hoot's Birthday Party, 5PM to 7PM
+
+⚽ THURSDAY 8/27
+• Women's Soccer vs Howard, 5PM
+• Men's Soccer vs North Florida, 7:30PM
+
+🏐 SATURDAY 8/29
+• FAU Volleyball vs FIU, RED OUT, 2PM
+
+Save this post so you don't miss anything 👀
+Tag who you're going with ⬇️
+
+Follow @fau.events for what's happening on and around campus every week.
+
+#FAU #FloridaAtlantic #FAUOwls #FAUEvents`;
+
+const NIGHTLIFE_CAPTION_EXAMPLE = `THIS WEEK IN FAU NIGHTLIFE 🦉🔥
+Welcome Week is packed from Tuesday through Saturday.
+
+🍸 TUESDAY 8/25
+• Tipsy Tuesdays: Welcome Back FAU at One11 Boca
+
+🎉 WEDNESDAY 8/26
+• Bounce Welcome Week, 9PM
+• Tryst Ladies Night, 9PM to 2AM
+
+🔥 THURSDAY 8/27
+• Bankrol Hayden at Tin Roof Fort Lauderdale, doors 10PM, 21+
+
+🚌 FRIDAY 8/28
+• FAU Party Bus to SWAY, pickup at FAU Student Union
+• Party Rock Fridays at Bounce, 9PM
+
+☀️ SATURDAY 8/29
+• Disorientation Welcome Week Pool Party at Rock Bar Day Club, 12PM to 7PM, 21+
+
+Save this post for the weekend 👀
+Send it to your group chat and tag who you're going out with ⬇️
+
+Follow @fau.events for FAU campus events, nightlife, sports, and things to do around Boca and Delray.
+
+#FAU #FAUEvents #FAUNightlife #FloridaAtlantic #FAUOwls`;
+
 export function generateCaptionPrompt(input: GenerateCaptionInput): { system: string; user: string } {
-  const bucketVoice: Record<GenerateCaptionInput["postType"], string> = {
-    monday_campus:
-      "upbeat, campus-community tone (this is the Monday 'This Week at [School]' post — campus events, student orgs and Owls athletics only)",
-    // Retained only so historical posts with this type still generate a
-    // caption; no schedule slot produces it any more.
-    midweek_activities: "energetic tone for sports/concerts/things-to-do (legacy midweek post)",
-    thursday_nightlife:
-      "fun, weekend-hype tone (this is the Thursday nightlife/weekend guide post — nightlife only, never campus or sports)",
-    custom: "clear, useful tone",
-  };
+  const isNightlife = input.postType === "thursday_nightlife";
+  const example = isNightlife ? NIGHTLIFE_CAPTION_EXAMPLE : CAMPUS_CAPTION_EXAMPLE;
+
   const system = [
-    `Write a concise Instagram caption (3-5 short lines, no more than ~60 words) for a ${input.schoolShortName} student events account.`,
-    `Voice: ${bucketVoice[input.postType]}.`,
-    "End with a light call-to-action (e.g. 'save this post', 'which one are you going to?').",
-    "Do not fabricate details not present in the event list. Only include a few relevant hashtags if they clearly help discovery — otherwise return an empty hashtags array.",
+    `Write an Instagram caption for ${input.schoolShortName}'s student events account, matching this EXACT reference caption's structure, tone, and formatting — down to the emoji placement, section spacing, and closing block. Only the words, emoji choices, and hashtags should change to fit the new school and event list below; the shape of the caption should not.`,
+    "",
+    "--- REFERENCE CAPTION ---",
+    example,
+    "--- END REFERENCE ---",
+    "",
+    "Structural rules, in order:",
+    isNightlife
+      ? '1. First line: an all-caps header in the exact shape "THIS WEEK IN {SCHOOL SHORT NAME} NIGHTLIFE" followed by two emoji that fit the school\'s mascot/vibe and nightlife energy.\n2. Second line: one short sentence previewing the week.'
+      : "1. First line: one or two short sentences previewing the week, mentioning the date range and the kinds of events in it. No all-caps header on this lane.",
+    "2. A blank line, then one section per day that actually has events, in chronological order, each shaped as:\n   {one emoji fitting that day's dominant event} {WEEKDAY} {M/D}\n   • {event}, {time}\n   Pick a different, well-fitting emoji per day — never reuse the same one twice unless nothing else fits. Only include venue in a bullet when it adds real information (nightlife events almost always name the venue; on-campus events usually don't need to).",
+    "3. A blank line, then exactly the two-line CTA block in the reference's own wording style (adapt phrasing to feel natural, keep the same two-beat structure: a 'save this' line, then a 'tag/send to' line, each ending with the same kind of emoji the reference uses).",
+    "4. A blank line, then a 'Follow @{instagram handle} for ...' line describing what the account posts, in the same voice as the reference (campus lane: what's happening on/around campus; nightlife lane: campus events, nightlife, sports, and things to do around the city).",
+    "5. A blank line, then 4-5 hashtags relevant to the school and lane, space-separated, no commas.",
+    "Never invent an event, day, time, or venue that isn't in the data given below. Use only the days that actually have events — skip any day with nothing on it entirely, do not pad it in.",
     JSON_ONLY_RULE,
     `Schema: {"caption": string, "hashtags": string[]}`,
   ].join("\n");
+
   const user = [
-    `School: ${input.schoolName} (${input.schoolShortName})`,
-    "Events in this post:",
-    ...input.events.map((e, i) => `${i + 1}. ${e.name} — ${e.venue ?? "TBD"} — ${e.date}`),
+    `School: ${input.schoolName} (${input.schoolShortName}), ${input.city}`,
+    `Instagram handle: ${input.instagramHandle}`,
+    `Week: ${input.weekRangeLabel}`,
+    "Events in this post, in chronological order (already grouped by day via dayLabel):",
+    ...input.events.map((e, i) => `${i + 1}. [${e.dayLabel}] ${e.name}${e.venue ? ` — ${e.venue}` : ""} — ${e.time}`),
   ].join("\n");
   return { system, user };
 }

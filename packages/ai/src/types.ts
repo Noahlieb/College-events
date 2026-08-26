@@ -55,11 +55,26 @@ export interface SummarizeEventInput {
   maxWords?: number;
 }
 
+export interface GenerateCaptionEvent {
+  name: string;
+  venue: string | null;
+  /** "MONDAY 8/24" — already resolved to the school's local timezone, so
+   * the prompt/mock never has to do calendar math of its own. */
+  dayLabel: string;
+  /** "11AM to 1PM" or just "5PM" for an event with no known end time. */
+  time: string;
+}
+
 export interface GenerateCaptionInput {
   postType: "monday_campus" | "midweek_activities" | "thursday_nightlife" | "custom";
   schoolName: string;
   schoolShortName: string;
-  events: { name: string; venue: string | null; date: string }[];
+  city: string;
+  /** Always carries a leading "@" — see formatInstagramHandle. */
+  instagramHandle: string;
+  /** "August 24 to 30" — the Monday-to-Sunday span this post covers. */
+  weekRangeLabel: string;
+  events: GenerateCaptionEvent[];
 }
 
 export interface CompareDuplicatesInput {
