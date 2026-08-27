@@ -21,15 +21,27 @@ async function manualSourcesFor(schoolId: string): Promise<SourceRow[]> {
  * Resolves a row's University/School/Campus text to a school, matching its
  * short name or full name case-insensitively. Not exact-only: an operator
  * pasting "UCF" or "University of Central Florida" should both work without
- * needing to know which form the database has stored.
+ * needing to know which form the database has stored — and neither should
+ * a scraper's informal shorthand ("MIAMI" for "University of Miami"), so an
+ * exact miss falls back to a substring match before giving up.
  */
 async function findSchoolByHint(hint: string): Promise<SchoolRow | null> {
-  const [match] = await db
+  const trimmed = hint.trim();
+  if (!trimmed) return null;
+
+  const [exact] = await db
     .select()
     .from(schools)
-    .where(or(ilike(schools.shortName, hint), ilike(schools.name, hint)))
+    .where(or(ilike(schools.shortName, trimmed), ilike(schools.name, trimmed)))
     .limit(1);
-  return match ?? null;
+  if (exact) return exact;
+
+  const [fuzzy] = await db
+    .select()
+    .from(schools)
+    .where(or(ilike(schools.name, `%${trimmed}%`), ilike(schools.shortName, `%${trimmed}%`)))
+    .limit(1);
+  return fuzzy ?? null;
 }
 
 export interface CsvImportSummary {
