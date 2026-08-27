@@ -83,6 +83,22 @@ export async function addUniversityAction(formData: FormData) {
     .returning();
 
   if (school) {
+    // Without this, CSV import and manual entry have no manual_submission
+    // source to attribute rows to for this school — the exact gap that
+    // needed a one-off SQL backfill for every school added before this
+    // fix existed. Matches the seed data's own manual_entry row.
+    await db.insert(sources).values({
+      schoolId: school.id,
+      name: "Manual Entry (VA / Team Submissions)",
+      sourceType: "manual_submission",
+      adapterType: "manual",
+      category: "campus",
+      priority: 8,
+      trustScore: 8,
+      crawlPriority: 8,
+      active: false,
+    });
+
     const store = await cookies();
     store.set(SCHOOL_COOKIE, school.id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
   }
