@@ -125,6 +125,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
       </div>
 
       <div className="panel">
+        <div style={{ overflowX: "auto" }}>
         <table>
           <thead>
             <tr>
@@ -217,6 +218,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );
