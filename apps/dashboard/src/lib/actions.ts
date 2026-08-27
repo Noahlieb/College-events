@@ -95,6 +95,25 @@ export async function forceIncludeEventAction(eventId: string) {
   revalidatePath("/");
 }
 
+/**
+ * Inline category change from the events table row — no need to open the
+ * event just to fix a miscategorized "other". Category drives which lane
+ * an event routes to (the "Goes to" column), so this also re-syncs weekly
+ * posts the same way approve/reject/force-include do, in case the new
+ * category moves it into or out of an upcoming post.
+ */
+export async function updateEventCategoryAction(eventId: string, category: EventCategory) {
+  const [event] = await db
+    .update(events)
+    .set({ category, tags: [category], updatedAt: new Date() })
+    .where(eq(events.id, eventId))
+    .returning({ schoolId: events.schoolId });
+  if (!event) return;
+  await syncWeeklyPosts(event.schoolId);
+  revalidatePath("/events");
+  revalidatePath("/posts");
+}
+
 export async function updateEventAction(eventId: string, formData: FormData) {
   const name = String(formData.get("name") ?? "");
   const venue = String(formData.get("venue") ?? "");

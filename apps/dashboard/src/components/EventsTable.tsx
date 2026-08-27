@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { approveEventAction, forceIncludeEventAction, rejectEventAction } from "@/lib/actions";
+import { useMemo, useState, useTransition } from "react";
+import { EVENT_CATEGORIES, type EventCategory } from "@college-events/core";
+import { approveEventAction, forceIncludeEventAction, rejectEventAction, updateEventCategoryAction } from "@/lib/actions";
 
 const LANE_LABEL: Record<string, string> = {
   monday_campus: "Mon · Campus",
@@ -30,7 +31,7 @@ export interface EventRow {
   name: string;
   startAt: string; // ISO
   venue: string | null;
-  category: string;
+  category: EventCategory;
   lane: string | null; // postType, or null when no lane accepts this category
   score: number;
   verificationStatus: string;
@@ -154,7 +155,9 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
                   {new Date(e.startAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </td>
                 <td>{e.venue ?? "—"}</td>
-                <td>{e.category.replace("_", " ")}</td>
+                <td>
+                  <CategorySelect eventId={e.id} category={e.category} />
+                </td>
                 <td>
                   {e.lane ? (
                     <span className="badge badge-blue">{LANE_LABEL[e.lane] ?? e.lane}</span>
@@ -206,5 +209,35 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
         </table>
       </div>
     </>
+  );
+}
+
+/**
+ * Inline category fix, right on the events list — miscategorized "other"
+ * rows were common enough (see the CSV importer's categorizeEvent
+ * fallback) that opening each one just to change this one field was
+ * real friction. "Goes to" is derived from category, not stored
+ * separately, so fixing it here is what fixes that column too — the
+ * server action's revalidatePath brings fresh lane data back down
+ * automatically, no separate handling needed.
+ */
+function CategorySelect({ eventId, category }: { eventId: string; category: EventCategory }) {
+  const [pending, startTransition] = useTransition();
+
+  const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value as EventCategory;
+    startTransition(async () => {
+      await updateEventCategoryAction(eventId, next);
+    });
+  };
+
+  return (
+    <select value={category} onChange={onChange} disabled={pending} style={{ fontSize: 12 }}>
+      {EVENT_CATEGORIES.map((c) => (
+        <option key={c} value={c}>
+          {c.replace(/_/g, " ")}
+        </option>
+      ))}
+    </select>
   );
 }
