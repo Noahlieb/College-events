@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "manual_lane" "post_type";

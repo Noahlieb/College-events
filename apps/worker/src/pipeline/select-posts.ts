@@ -130,6 +130,7 @@ async function buildWeek({
       verificationStatus: e.verificationStatus,
       startAt: e.startAt.toISOString(),
       isHomeGame: isHomeGame(e.flags),
+      manualLane: e.manualLane,
     }));
 
     const selected = selectEventsForPost(selectable, {
@@ -155,6 +156,7 @@ async function buildWeek({
         startAt: e.startAt.toISOString(),
         timezone: school.timezone,
         isHomeGame: isHomeGame(e.flags),
+        manualLane: e.manualLane,
       };
       if (isEventAllowedInLane(slot.postType, laneEvent)) {
         forcedInLane.push(e);
@@ -185,6 +187,7 @@ async function buildWeek({
         startAt: e.startAt.toISOString(),
         timezone: school.timezone,
         isHomeGame: isHomeGame(e.flags),
+        manualLane: e.manualLane,
       })),
     );
 

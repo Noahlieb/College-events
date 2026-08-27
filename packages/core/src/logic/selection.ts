@@ -1,6 +1,6 @@
-import type { EventCategory, VerificationStatus } from "../types/enums.js";
+import type { EventCategory, PostType, VerificationStatus } from "../types/enums.js";
 import type { BucketScores } from "../types/domain.js";
-import { isEventAllowedInLane, type PostBucket } from "./lanes.js";
+import { isEventAllowedInLane, isLaneOverride, type PostBucket } from "./lanes.js";
 
 export type { PostBucket };
 
@@ -13,6 +13,9 @@ export interface SelectableEvent {
   /** Sports only: false keeps an away/neutral-site game out of every post.
    * Spread into the lane check below, so see LaneEvent for the semantics. */
   isHomeGame?: boolean | null;
+  /** An operator's explicit lane pick. Spread into the lane check below —
+   * see LaneEvent for the semantics. */
+  manualLane?: PostType | null;
 }
 
 export interface SelectionOptions {
@@ -51,6 +54,11 @@ export function selectEventsForPost(
     if (!isEventAllowedInLane(options.postType, { ...e, timezone: options.timezone })) return false;
     if (e.verificationStatus === "conflict" || e.verificationStatus === "rejected") return false;
     if (new Date(e.startAt).getTime() < now.getTime()) return false;
+    // A manual pick or the after-9pm rule already decided this event
+    // belongs here — its category-based bucket score (e.g. a "campus"
+    // event's near-zero thursdayNightlife affinity) would otherwise filter
+    // out exactly the events these overrides exist to include.
+    if (isLaneOverride({ ...e, timezone: options.timezone })) return true;
     return e.bucketScores[options.bucket] >= minScore;
   });
 

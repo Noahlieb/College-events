@@ -92,6 +92,13 @@
       "when": 1787752225834,
       "tag": "0012_silky_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787859849140,
+      "tag": "0013_mute_giant_man",
+      "breakpoints": true
     }
   ]
 }

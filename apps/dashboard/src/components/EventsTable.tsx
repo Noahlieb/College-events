@@ -1,13 +1,28 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { EVENT_CATEGORIES, type EventCategory } from "@college-events/core";
-import { approveEventAction, forceIncludeEventAction, rejectEventAction, updateEventCategoryAction } from "@/lib/actions";
+import { EVENT_CATEGORIES, type EventCategory, type PostType } from "@college-events/core";
+import {
+  approveEventAction,
+  forceIncludeEventAction,
+  rejectEventAction,
+  updateEventCategoryAction,
+  updateEventLaneOverrideAction,
+} from "@/lib/actions";
 
 const LANE_LABEL: Record<string, string> = {
   monday_campus: "Mon · Campus",
   thursday_nightlife: "Thu · Nightlife",
 };
+
+/** Every lane an event can be manually pinned to — kept separate from
+ * LANE_LABEL's keys since that map is also indexed by lane values that
+ * come from the DB and shouldn't silently gain a new option just because
+ * a schedule slot uses a new postType string. */
+const LANE_OVERRIDE_OPTIONS: { value: PostType; label: string }[] = [
+  { value: "monday_campus", label: "Mon · Campus" },
+  { value: "thursday_nightlife", label: "Thu · Nightlife" },
+];
 
 const VERIFICATION_BADGE: Record<string, string> = {
   verified: "badge-green",
@@ -33,6 +48,7 @@ export interface EventRow {
   venue: string | null;
   category: EventCategory;
   lane: string | null; // postType, or null when no lane accepts this category
+  manualLane: PostType | null; // operator's explicit "goes to" override, if any
   score: number;
   verificationStatus: string;
   status: string;
@@ -159,13 +175,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
                   <CategorySelect eventId={e.id} category={e.category} />
                 </td>
                 <td>
-                  {e.lane ? (
-                    <span className="badge badge-blue">{LANE_LABEL[e.lane] ?? e.lane}</span>
-                  ) : (
-                    <span className="badge badge-muted" title="No weekly post accepts this category — force-include it to use it">
-                      no post
-                    </span>
-                  )}
+                  <LaneSelect eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
                 </td>
                 <td>{e.score}</td>
                 <td>
@@ -239,5 +249,44 @@ function CategorySelect({ eventId, category }: { eventId: string; category: Even
         </option>
       ))}
     </select>
+  );
+}
+
+const AUTO_VALUE = "__auto__";
+
+/**
+ * "Goes to" edit control. `lane` is always the system's current answer
+ * (auto-routing already folds in the manual pick and the after-9pm rule —
+ * see laneForEvent), while `manualLane` is only non-null when an operator
+ * has pinned it. Selecting "Auto" clears the pin and returns the event to
+ * normal routing; picking a lane explicitly pins it there even past what
+ * category/timing would otherwise decide.
+ */
+function LaneSelect({ eventId, lane, manualLane }: { eventId: string; lane: string | null; manualLane: PostType | null }) {
+  const [pending, startTransition] = useTransition();
+
+  const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value;
+    startTransition(async () => {
+      await updateEventLaneOverrideAction(eventId, next === AUTO_VALUE ? null : (next as PostType));
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} style={{ fontSize: 12, width: 150 }}>
+        <option value={AUTO_VALUE}>Auto{lane ? ` (${LANE_LABEL[lane] ?? lane})` : " (no post)"}</option>
+        {LANE_OVERRIDE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {!manualLane && !lane && (
+        <span className="badge badge-muted" style={{ fontSize: 10 }} title="No weekly post accepts this category — force-include it, or pin a lane above">
+          no post
+        </span>
+      )}
+    </div>
   );
 }

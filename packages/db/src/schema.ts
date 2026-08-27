@@ -408,6 +408,12 @@ export const events = pgTable("events", {
    * run; it only takes effect through the operator's own explicit
    * "Regenerate image" action (force: true). */
   artworkComment: text("artwork_comment"),
+  /** An operator's explicit lane pick from the events table, overriding
+   * every automatic routing rule (category, the after-9pm rule, weekend
+   * sports) — sticks across every future weekly-post rebuild until
+   * cleared. Null means "let laneForEvent decide," the default for every
+   * event. See packages/core/src/logic/lanes.ts's LaneEvent.manualLane. */
+  manualLane: postTypeEnum("manual_lane"),
   /** The winning asset among every candidate from every linked source.
    * Nullable: an event with no artwork anywhere renders a generated
    * placeholder, which is deliberately *not* stored as a candidate so it

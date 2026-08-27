@@ -123,6 +123,14 @@ export interface LaneEvent {
    * exactly the campus sports this network exists to promote.
    */
   isHomeGame?: boolean | null;
+  /** An operator's explicit lane pick from the events table (spec: "I want
+   * the ability to edit which post it goes to even after the system
+   * autoselects"). Takes priority over every rule below, including the
+   * away-game exclusion — a human choosing a specific lane knows something
+   * the algorithm doesn't. Sticks across every future rebuild until
+   * cleared, unlike force_include, which only bypasses the score/cap
+   * filters within whatever lane the event already routes to. */
+  manualLane?: PostType | null;
 }
 
 /** True when the event starts on a Fri/Sat/Sun *in the school's local time*.
@@ -132,24 +140,43 @@ export function isWeekendEvent(startAt: string, timezone: string): boolean {
   return WEEKEND_DAYS.has(toZonedTime(parseISO(startAt), timezone).getDay());
 }
 
+/** 9PM local — the hour at/after which an event reads as a night-hours
+ * plan to an attendee regardless of what category it was tagged with. */
+const NIGHTLIFE_HOUR_CUTOFF = 21;
+
+/** True once the event's local start time is at/after the nightlife
+ * cutoff. Evaluated in the school's own timezone for the same reason
+ * isWeekendEvent is — a 9pm ET kickoff is still afternoon in UTC. */
+export function isAfterNightlifeCutoff(startAt: string, timezone: string): boolean {
+  return toZonedTime(parseISO(startAt), timezone).getHours() >= NIGHTLIFE_HOUR_CUTOFF;
+}
+
 /**
- * The single lane an event belongs to, or undefined when its category is
- * not auto-posted at all.
+ * The single lane an event belongs to, or undefined when nothing routes it
+ * there at all.
  *
  * Routing is a function of category *and* timing, not category alone:
  *
- *   nightlife              → Thursday, always
- *   sports, away/neutral   → no lane — a road game isn't something to attend
- *   sports (Fri/Sat/Sun)   → Thursday — weekend games are weekend plans
- *   sports (Mon-Thu)       → Monday — intramural, club and varsity alike
- *   campus, student_org    → Monday, always
- *   everything else        → no lane (never auto-posted)
+ *   manual pick             → whatever lane an operator explicitly chose,
+ *                             always, overriding every rule below
+ *   after 9pm local         → Thursday, regardless of category — a late
+ *                             "campus" mixer is a nightlife-hours plan
+ *   nightlife                → Thursday, always
+ *   sports, away/neutral    → no lane — a road game isn't something to attend
+ *   sports (Fri/Sat/Sun)    → Thursday — weekend games are weekend plans
+ *   sports (Mon-Thu)        → Monday — intramural, club and varsity alike
+ *   campus, student_org     → Monday, always
+ *   everything else         → no lane (never auto-posted)
  *
  * Because every event resolves to at most one lane here, the lanes are
  * mutually exclusive by construction — there is no way for the same event
  * to satisfy two lanes' rules and appear in both posts.
  */
 export function laneForEvent(event: LaneEvent): PostLane | undefined {
+  if (event.manualLane) return laneForPostType(event.manualLane);
+
+  if (isAfterNightlifeCutoff(event.startAt, event.timezone)) return THURSDAY_NIGHTLIFE_LANE;
+
   switch (event.category) {
     case "nightlife":
       return THURSDAY_NIGHTLIFE_LANE;
@@ -165,6 +192,19 @@ export function laneForEvent(event: LaneEvent): PostLane | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * True when an event only reaches its lane through an override — a manual
+ * pick, or the after-9pm rule — rather than its category's normal routing.
+ * selection.ts uses this to skip the bucket-score quality gate for these:
+ * a "campus" category event's near-zero thursdayNightlife affinity score
+ * says nothing about whether it belongs once a human, or the clock, has
+ * already decided it does.
+ */
+export function isLaneOverride(event: LaneEvent): boolean {
+  if (event.manualLane) return true;
+  return isAfterNightlifeCutoff(event.startAt, event.timezone);
 }
 
 export function laneForPostType(postType: string): PostLane | undefined {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 import { db, events, eventSources, postEvents, posts, sources } from "@college-events/db";
-import type { AdapterType, EventCategory, SourceCategory, SourceType } from "@college-events/core";
+import type { AdapterType, EventCategory, PostType, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
 // Deep imports into each pipeline file rather than the @college-events/worker
 // barrel (`import { x } from "@college-events/worker"`) — the barrel's
@@ -106,6 +106,26 @@ export async function updateEventCategoryAction(eventId: string, category: Event
   const [event] = await db
     .update(events)
     .set({ category, tags: [category], updatedAt: new Date() })
+    .where(eq(events.id, eventId))
+    .returning({ schoolId: events.schoolId });
+  if (!event) return;
+  await syncWeeklyPosts(event.schoolId);
+  revalidatePath("/events");
+  revalidatePath("/posts");
+}
+
+/**
+ * Manual "goes to" override — lets an admin pin an event to a specific
+ * lane's post even after the system autoselects it (or route it out of
+ * one), independent of category or the after-9pm rule. Passing null clears
+ * the override and returns the event to normal auto-routing (see
+ * laneForEvent in @college-events/core). Re-syncs weekly posts the same
+ * way category/approve/reject do, so the change is reflected immediately.
+ */
+export async function updateEventLaneOverrideAction(eventId: string, manualLane: PostType | null) {
+  const [event] = await db
+    .update(events)
+    .set({ manualLane, updatedAt: new Date() })
     .where(eq(events.id, eventId))
     .returning({ schoolId: events.schoolId });
   if (!event) return;

@@ -32,7 +32,12 @@ export default async function EventsPage({
     .orderBy(desc(events.startAt));
 
   const tableRows: EventRow[] = rows.map((e) => {
-    const lane = laneForEvent({ category: e.category, startAt: e.startAt.toISOString(), timezone: school.timezone });
+    const lane = laneForEvent({
+      category: e.category,
+      startAt: e.startAt.toISOString(),
+      timezone: school.timezone,
+      manualLane: e.manualLane,
+    });
     return {
       id: e.id,
       name: e.name,
@@ -40,6 +45,7 @@ export default async function EventsPage({
       venue: e.venue,
       category: e.category,
       lane: lane?.postType ?? null,
+      manualLane: e.manualLane,
       score: e.bucketScores.overall,
       verificationStatus: e.verificationStatus,
       status: e.status,
