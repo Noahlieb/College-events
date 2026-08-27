@@ -127,19 +127,51 @@ export default async function UniversitiesPage() {
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 Primary
-                <input name="primaryColor" type="color" defaultValue="#1A1A2E" />
+                <input
+                  name="primaryColor"
+                  type="text"
+                  defaultValue="#1A1A2E"
+                  placeholder="#1A1A2E"
+                  pattern="^#[0-9a-fA-F]{6}$"
+                  title="A 6-digit hex color, e.g. #1A1A2E"
+                  style={{ width: 100, fontFamily: "monospace" }}
+                />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 Secondary
-                <input name="secondaryColor" type="color" defaultValue="#16213E" />
+                <input
+                  name="secondaryColor"
+                  type="text"
+                  defaultValue="#16213E"
+                  placeholder="#16213E"
+                  pattern="^#[0-9a-fA-F]{6}$"
+                  title="A 6-digit hex color, e.g. #16213E"
+                  style={{ width: 100, fontFamily: "monospace" }}
+                />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 Accent
-                <input name="accentColor" type="color" defaultValue="#E94560" />
+                <input
+                  name="accentColor"
+                  type="text"
+                  defaultValue="#E94560"
+                  placeholder="#E94560"
+                  pattern="^#[0-9a-fA-F]{6}$"
+                  title="A 6-digit hex color, e.g. #E94560"
+                  style={{ width: 100, fontFamily: "monospace" }}
+                />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 Background
-                <input name="backgroundColor" type="color" defaultValue="#0B0B0F" />
+                <input
+                  name="backgroundColor"
+                  type="text"
+                  defaultValue="#0B0B0F"
+                  placeholder="#0B0B0F"
+                  pattern="^#[0-9a-fA-F]{6}$"
+                  title="A 6-digit hex color, e.g. #0B0B0F"
+                  style={{ width: 100, fontFamily: "monospace" }}
+                />
               </label>
             </div>
           </div>
