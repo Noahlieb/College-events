@@ -232,7 +232,7 @@ function CategorySelect({ eventId, category }: { eventId: string; category: Even
   };
 
   return (
-    <select value={category} onChange={onChange} disabled={pending} style={{ fontSize: 12 }}>
+    <select value={category} onChange={onChange} disabled={pending} style={{ fontSize: 12, width: 140 }}>
       {EVENT_CATEGORIES.map((c) => (
         <option key={c} value={c}>
           {c.replace(/_/g, " ")}
