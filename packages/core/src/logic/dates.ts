@@ -1,5 +1,5 @@
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
-import { isValid, parseISO } from "date-fns";
+import { addDays, isValid, parseISO } from "date-fns";
 
 export interface EventDateInput {
   /** "YYYY-MM-DD" */
@@ -68,6 +68,34 @@ export function parseEventDate(input: EventDateInput): ParsedEventDate {
 }
 
 export class EventDateParseError extends Error {}
+
+/**
+ * Turns an inclusive "YYYY-MM-DD" calendar-day range — as picked from a
+ * date input, meaning the school's local calendar, not UTC — into a
+ * [start, end) instant range for a `startAt >= start AND startAt < end`
+ * query. Either side can be omitted for an open-ended range. The upper
+ * bound is the *next* local day's midnight rather than "+24h" so a
+ * DST transition on the boundary day doesn't clip or extend it by an hour.
+ */
+export function localDateRangeToUtc(
+  from: string | null,
+  to: string | null,
+  timezone: string,
+): { start: Date | null; end: Date | null } {
+  const parseLocalMidnight = (d: string): Date | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    const local = parseISO(`${d}T00:00:00`);
+    return isValid(local) ? local : null;
+  };
+
+  const fromLocal = from ? parseLocalMidnight(from) : null;
+  const toLocal = to ? parseLocalMidnight(to) : null;
+
+  return {
+    start: fromLocal ? fromZonedTime(fromLocal, timezone) : null,
+    end: toLocal ? fromZonedTime(addDays(toLocal, 1), timezone) : null,
+  };
+}
 
 /** An event is expired once its end (or start, if no end) is in the past. */
 export function isExpired(
