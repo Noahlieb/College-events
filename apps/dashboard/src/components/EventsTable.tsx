@@ -65,6 +65,12 @@ type SortKey = "name" | "startAt" | "venue" | "category" | "score" | "verificati
  * driven — they scope which events are even in play). This table only
  * reorders and further narrows what's on screen, so there's no round trip
  * for either a header click or a keystroke.
+ *
+ * Columns are deliberately compact — thumbnail folded into the event cell,
+ * category/lane stacked into one "Routing" cell, verification/status
+ * stacked into one "Status" cell — so a full row of controls fits inside
+ * the page width instead of needing a horizontal scrollbar to reach the
+ * action buttons.
  */
 export function EventsTable({ rows }: { rows: EventRow[] }) {
   const [query, setQuery] = useState("");
@@ -105,11 +111,23 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
     return copy;
   }, [filtered, sortKey, sortDir]);
 
+  const sortArrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
+
   const sortHeader = (key: SortKey, label: string) => (
     <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort(key)}>
       {label}
-      {sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+      {sortArrow(key)}
     </th>
+  );
+
+  /** A sortable sub-label used inside a header cell that's shared by two
+   * stacked columns (Routing, Status) — same click behavior as sortHeader,
+   * just not its own <th>. */
+  const sortSubLabel = (key: SortKey, label: string) => (
+    <div style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort(key)}>
+      {label}
+      {sortArrow(key)}
+    </div>
   );
 
   return (
@@ -126,98 +144,104 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
 
       <div className="panel">
         <div style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              {sortHeader("name", "Event")}
-              {sortHeader("startAt", "Date")}
-              {sortHeader("venue", "Venue")}
-              {sortHeader("category", "Category")}
-              {/* Not sortable — derived from category + timing, not a stored
-                  column, so there's no single scalar to compare rows on
-                  beyond what category sorting already gives. */}
-              <th>Goes to</th>
-              {sortHeader("score", "Score")}
-              {sortHeader("verificationStatus", "Verification")}
-              {sortHeader("status", "Status")}
-              {sortHeader("sourceName", "Source")}
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((e) => (
-              <tr key={e.id}>
-                <td>
-                  {e.sourceImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img className="thumb" src={e.sourceImage} alt="" />
-                  ) : (
-                    <div className="thumb" />
-                  )}
-                </td>
-                <td>
-                  <a href={`/events/${e.id}`}>{e.name}</a>
-                  {e.flags.length > 0 && (
-                    <div className="flags">
-                      {e.flags.map((f) => (
-                        <span className="flag-pill" key={f}>
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </td>
-                <td>
-                  {new Date(e.startAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </td>
-                <td>{e.venue ?? "—"}</td>
-                <td>
-                  <CategorySelect eventId={e.id} category={e.category} />
-                </td>
-                <td>
-                  <LaneSelect eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
-                </td>
-                <td>{e.score}</td>
-                <td>
-                  <span className={`badge ${VERIFICATION_BADGE[e.verificationStatus] ?? "badge-muted"}`}>
-                    {e.verificationStatus.replace(/_/g, " ")}
-                  </span>
-                </td>
-                <td>
-                  <span className={`badge ${STATUS_BADGE[e.status] ?? "badge-muted"}`}>{e.status}</span>
-                </td>
-                <td style={{ maxWidth: 140, fontSize: 12, color: "var(--muted)" }}>{e.sourceName ?? "—"}</td>
-                <td>
-                  <div className="btn-row">
-                    <form action={approveEventAction.bind(null, e.id)} className="inline">
-                      <button className="btn btn-sm" type="submit">
-                        Approve
-                      </button>
-                    </form>
-                    <form action={rejectEventAction.bind(null, e.id)} className="inline">
-                      <button className="btn btn-sm btn-danger" type="submit">
-                        Reject
-                      </button>
-                    </form>
-                    <form action={forceIncludeEventAction.bind(null, e.id)} className="inline">
-                      <button className="btn btn-sm" type="submit">
-                        Force include
-                      </button>
-                    </form>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {sorted.length === 0 && (
+          <table className="events-table">
+            <thead>
               <tr>
-                <td colSpan={10} className="empty">
-                  {query ? "No events match your search." : "No events match this filter."}
-                </td>
+                {sortHeader("name", "Event")}
+                {sortHeader("startAt", "Date")}
+                {sortHeader("venue", "Venue")}
+                <th>
+                  {sortSubLabel("category", "Category")}
+                  <div className="th-sublabel">Goes to</div>
+                </th>
+                {sortHeader("score", "Score")}
+                <th>
+                  {sortSubLabel("verificationStatus", "Verify")}
+                  {sortSubLabel("status", "Status")}
+                </th>
+                {sortHeader("sourceName", "Source")}
+                <th></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map((e) => (
+                <tr key={e.id}>
+                  <td>
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      {e.sourceImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="thumb-sm" src={e.sourceImage} alt="" />
+                      ) : (
+                        <div className="thumb-sm" />
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <a href={`/events/${e.id}`}>{e.name}</a>
+                        {e.flags.length > 0 && (
+                          <div className="flags">
+                            {e.flags.map((f) => (
+                              <span className="flag-pill" key={f}>
+                                {f}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {new Date(e.startAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </td>
+                  <td className="truncate-cell" style={{ maxWidth: 130 }} title={e.venue ?? undefined}>
+                    {e.venue ?? "—"}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <CategorySelect eventId={e.id} category={e.category} />
+                      <LaneSelect eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "center" }}>{e.score}</td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                      <span className={`badge ${VERIFICATION_BADGE[e.verificationStatus] ?? "badge-muted"}`}>
+                        {e.verificationStatus.replace(/_/g, " ")}
+                      </span>
+                      <span className={`badge ${STATUS_BADGE[e.status] ?? "badge-muted"}`}>{e.status}</span>
+                    </div>
+                  </td>
+                  <td className="truncate-cell" style={{ maxWidth: 100, color: "var(--muted)" }} title={e.sourceName ?? undefined}>
+                    {e.sourceName ?? "—"}
+                  </td>
+                  <td>
+                    <div className="btn-row" style={{ flexWrap: "nowrap", gap: 4 }}>
+                      <form action={approveEventAction.bind(null, e.id)} className="inline">
+                        <button className="btn btn-sm btn-icon" type="submit" title="Approve">
+                          ✓
+                        </button>
+                      </form>
+                      <form action={rejectEventAction.bind(null, e.id)} className="inline">
+                        <button className="btn btn-sm btn-danger btn-icon" type="submit" title="Reject">
+                          ✕
+                        </button>
+                      </form>
+                      <form action={forceIncludeEventAction.bind(null, e.id)} className="inline">
+                        <button className="btn btn-sm btn-icon" type="submit" title="Force include (bypass score/slot caps)">
+                          Force
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="empty">
+                    {query ? "No events match your search." : "No events match this filter."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </>
@@ -244,7 +268,7 @@ function CategorySelect({ eventId, category }: { eventId: string; category: Even
   };
 
   return (
-    <select value={category} onChange={onChange} disabled={pending} style={{ fontSize: 12, width: 140 }}>
+    <select value={category} onChange={onChange} disabled={pending} className="select-compact">
       {EVENT_CATEGORIES.map((c) => (
         <option key={c} value={c}>
           {c.replace(/_/g, " ")}
@@ -275,20 +299,13 @@ function LaneSelect({ eventId, lane, manualLane }: { eventId: string; lane: stri
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} style={{ fontSize: 12, width: 150 }}>
-        <option value={AUTO_VALUE}>Auto{lane ? ` (${LANE_LABEL[lane] ?? lane})` : " (no post)"}</option>
-        {LANE_OVERRIDE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      {!manualLane && !lane && (
-        <span className="badge badge-muted" style={{ fontSize: 10 }} title="No weekly post accepts this category — force-include it, or pin a lane above">
-          no post
-        </span>
-      )}
-    </div>
+    <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} className="select-compact">
+      <option value={AUTO_VALUE}>Auto{lane ? ` (${LANE_LABEL[lane] ?? lane})` : " (no post)"}</option>
+      {LANE_OVERRIDE_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }

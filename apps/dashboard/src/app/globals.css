@@ -98,6 +98,7 @@ tr:hover td { background: var(--panel-alt); }
 
 .thumb { width: 48px; height: 60px; object-fit: cover; border-radius: 4px; background: var(--panel-alt); }
 .thumb-lg { width: 100%; max-width: 260px; border-radius: 8px; display: block; }
+.thumb-sm { width: 32px; height: 40px; object-fit: cover; border-radius: 4px; background: var(--panel-alt); flex-shrink: 0; }
 
 .btn {
   display: inline-block;
@@ -115,6 +116,7 @@ tr:hover td { background: var(--panel-alt); }
 .btn-danger { background: rgba(229,72,77,0.12); border-color: var(--red); color: var(--red); }
 .btn-sm { padding: 3px 9px; font-size: 11px; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-icon { padding: 3px 8px; min-width: 26px; text-align: center; }
 
 input, select, textarea {
   background: var(--panel-alt);
@@ -226,3 +228,12 @@ form.inline { display: inline; }
 .empty { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* Dense, all-controls-visible layout for the events table — every column
+   is either flexible (Event) or intentionally narrow, so a full row of
+   selects + action buttons fits without a horizontal scrollbar on a
+   normal desktop viewport. */
+.events-table th, .events-table td { padding: 8px 10px; font-size: 12px; }
+.th-sublabel { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-top: 2px; }
+.truncate-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-compact { width: auto; max-width: 148px; padding: 4px 6px; font-size: 12px; }
