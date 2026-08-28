@@ -11,14 +11,22 @@ function monthDay(iso: string, tz: string): { month: string; day: number } {
   return { month: parts.find((p) => p.type === "month")!.value, day: parseInt(parts.find((p) => p.type === "day")!.value, 10) };
 }
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * "AUGUST 22ND" in the school's local timezone, or "AUGUST 22ND–23RD" (or
  * "AUGUST 31ST–SEPTEMBER 1ST" across a month boundary) when `endIso` falls
- * on a different calendar day there — a 2-day conference gets one flyer
- * with a date range instead of looking like a single-day event. Calendar
- * day is compared in the school's own timezone, not the raw instants: an
- * 11PM–1AM event technically crosses midnight but isn't what "spans
- * multiple days" means here.
+ * on a later calendar day there AND the event actually runs a full extra
+ * day — a 2-day conference gets one flyer with a date range instead of
+ * looking like a single-day event.
+ *
+ * A one-night event that merely runs past midnight (9PM–2:30AM) technically
+ * ends on the next calendar day but isn't what "spans multiple days" means
+ * here, so it still collapses to just its start date — regardless of the
+ * event's category, since this is about what actually happened on the
+ * calendar, not how the event was tagged. The distinguishing signal is
+ * duration: anything under 24 hours that only spilled into the very next
+ * day is one continuous night out, not a second day of programming.
  */
 export function formatDateKicker(iso: string, tz: string, endIso?: string | null): string {
   const start = monthDay(iso, tz);
@@ -26,7 +34,13 @@ export function formatDateKicker(iso: string, tz: string, endIso?: string | null
   if (!endIso) return startLabel;
 
   const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz });
-  if (dayFmt.format(new Date(iso)) === dayFmt.format(new Date(endIso))) return startLabel;
+  const startDay = dayFmt.format(new Date(iso));
+  const endDay = dayFmt.format(new Date(endIso));
+  if (startDay === endDay) return startLabel;
+
+  const durationMs = new Date(endIso).getTime() - new Date(iso).getTime();
+  const dayGap = (Date.parse(endDay) - Date.parse(startDay)) / ONE_DAY_MS;
+  if (durationMs < ONE_DAY_MS && dayGap <= 1) return startLabel;
 
   const end = monthDay(endIso, tz);
   const endLabel = start.month === end.month ? ordinal(end.day) : `${end.month.toUpperCase()} ${ordinal(end.day)}`;

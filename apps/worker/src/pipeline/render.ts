@@ -121,15 +121,15 @@ export async function renderPost(postId: string): Promise<RenderPostResult> {
     // last resort, for when the image we selected cannot be downloaded
     // right now.
     const image = await fetchImageSafely(imageUrl);
-    // Nightlife events routinely run past midnight (9PM-2:30AM) without
-    // being multi-day events in any real sense — the date range treatment
-    // is for a genuine multi-day event like a 2-day conference. Only
-    // widening the range for non-nightlife categories keeps a one-night
-    // party from getting a misleading "AUGUST 27TH-28TH" kicker.
-    const dateRangeEnd = event.category === "nightlife" ? null : (event.endAt?.toISOString() ?? null);
     const slideBuffer = await renderEventSlide({
       image,
-      date: formatDateKicker(event.startAt.toISOString(), school.timezone, dateRangeEnd),
+      // formatDateKicker itself collapses a one-night event that merely
+      // runs past midnight (9PM-2:30AM) down to its start date, so there's
+      // no need to gate this on category — a party miscategorized as
+      // "concert" or "other" (or any event pulled into the nightlife lane
+      // by the after-9pm rule) gets the same correct single-date treatment
+      // as one properly tagged "nightlife".
+      date: formatDateKicker(event.startAt.toISOString(), school.timezone, event.endAt?.toISOString() ?? null),
       title: event.name,
       // A missing or access-gated venue ("Sign in to see location") reads as
       // a broken flyer, not a real one — resolveVenueLabel swaps it for the
