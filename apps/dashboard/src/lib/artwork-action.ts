@@ -10,12 +10,15 @@ import { db, events, schools } from "@college-events/db";
 // render.ts (image *generation* has nothing to do with sharp — only
 // *compositing* a slide does), so this deep import is safe without the
 // render-service HTTP hop renderPostAction needs.
-import { resolveEventArtwork } from "@college-events/worker/dist/pipeline/artwork.js";
+import { attachManualArtwork, resolveEventArtwork, selectEventArtwork } from "@college-events/worker/dist/pipeline/artwork.js";
 
 export interface RegenerateArtworkResult {
   action: string;
   reason: string;
 }
+
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // generous for a phone photo, small enough to keep the request sane
+const ALLOWED_UPLOAD_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /**
  * Saves the reviewer's comment and asks for a fresh AI generation of this
@@ -47,5 +50,49 @@ export async function regenerateArtworkAction(eventId: string, formData: FormDat
   // this only invalidates the events page, not every post.
   revalidatePath("/events");
 
+  return { action: outcome.action, reason: outcome.reason };
+}
+
+/**
+ * Manual "edit" path: replace an event's artwork with an admin's own file
+ * instead of an AI regeneration. Stored as an official visual (same as a
+ * scraped flyer — see attachManualArtwork), so it sticks against any future
+ * automatic regeneration rather than being quietly overwritten on the next
+ * pipeline run.
+ */
+export async function uploadEventArtworkAction(eventId: string, formData: FormData): Promise<RegenerateArtworkResult> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { action: "skipped", reason: "Choose an image file first." };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { action: "skipped", reason: "Image is too large — 8MB max." };
+  }
+  if (!ALLOWED_UPLOAD_MIME.has(file.type)) {
+    return { action: "skipped", reason: `Unsupported file type "${file.type || "unknown"}" — use JPEG, PNG, or WebP.` };
+  }
+
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!event) throw new Error("Unknown event");
+  const [school] = await db.select().from(schools).where(eq(schools.id, event.schoolId)).limit(1);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const outcome = await attachManualArtwork(eventId, buffer, file.type, school?.shortName);
+
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath("/events");
+  return { action: outcome.action, reason: outcome.reason };
+}
+
+/**
+ * "Revert to original" (or to any other past version): points the event at
+ * an existing asset from its own history — every past AI generation and
+ * every uploaded/scraped flyer is already preserved as its own row (see
+ * selectEventArtwork) — with no new generation and no cost.
+ */
+export async function selectEventArtworkAction(eventId: string, assetId: string): Promise<RegenerateArtworkResult> {
+  const outcome = await selectEventArtwork(eventId, assetId);
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath("/events");
   return { action: outcome.action, reason: outcome.reason };
 }

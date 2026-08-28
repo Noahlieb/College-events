@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { assetCandidates, db, events, sources } from "@college-events/db";
 import {
   AssetDiscoveryIncompleteError,
@@ -294,4 +294,118 @@ export async function resolveArtworkForEvents(
     outcomes.push(await resolveEventArtwork(id, options));
   }
   return outcomes;
+}
+
+/**
+ * Attaches an admin-uploaded image as this event's artwork, on the same
+ * footing as a scraped flyer (isOfficial: true) rather than as a separate
+ * kind of override. That's deliberate: the "a real flyer always wins"
+ * guard in resolveEventArtwork/Guard 1 already exists and already does
+ * exactly what a manual pick needs — sticking against future AI
+ * regeneration — so this reuses it instead of inventing a second
+ * always-wins flag that the rest of the pipeline would need to know about.
+ */
+export async function attachManualArtwork(
+  eventId: string,
+  image: Buffer,
+  mime: string,
+  schoolShortName?: string,
+): Promise<ArtworkOutcome> {
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!event) return { action: "skipped", reason: "event not found" };
+
+  const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+  const path = contentAddressedPath(
+    assetPath(schoolShortName ?? "shared", "events", eventId, `manual.${extension}`),
+    image,
+  );
+  const storageUrl = await saveAsset(path, image);
+
+  const [asset] = await db
+    .insert(assetCandidates)
+    .values({
+      schoolId: event.schoolId,
+      eventId: event.id,
+      sourceId: null,
+      rawContentId: null,
+      sourceUrl: storageUrl,
+      storageUrl,
+      mime,
+      classification: "flyer",
+      isOfficial: true,
+      isAiGenerated: false,
+      confidence: 1,
+      origin: "manual_upload",
+    })
+    .onConflictDoUpdate({
+      target: [assetCandidates.eventId, assetCandidates.sourceUrl],
+      set: { classification: "flyer", isOfficial: true },
+    })
+    .returning();
+  if (!asset) throw new Error("uploaded asset row was not written");
+
+  const reason = "manually uploaded by an admin";
+  await db
+    .update(events)
+    .set({ canonicalAssetId: asset.id, selectedAssetReason: reason, generationStatus: "not_needed" })
+    .where(eq(events.id, eventId));
+
+  return { action: "selected_official", assetId: asset.id, reason };
+}
+
+/**
+ * Every image ever stored for an event, oldest first — every past AI
+ * generation and every uploaded/scraped flyer is already preserved as its
+ * own row (storage.ts's content-addressed paths mean a regenerate never
+ * overwrites the previous file), just never surfaced anywhere before now.
+ * This is what lets the dashboard offer "revert to an earlier version"
+ * without any new storage or schema.
+ */
+export async function listEventArtwork(eventId: string) {
+  return db.select().from(assetCandidates).where(eq(assetCandidates.eventId, eventId)).orderBy(asc(assetCandidates.createdAt));
+}
+
+/**
+ * Points an event at a specific existing candidate — "use this one" from
+ * the history list, including reverting to an earlier generation or back
+ * to the original scraped flyer. Refuses to select generated/unofficial
+ * art while a *different* official visual exists among the event's
+ * candidates, so this can't be used to quietly break the "a real flyer
+ * always wins" rule the rest of the pipeline enforces — remove or replace
+ * the official image first if AI art is genuinely what's wanted instead.
+ */
+export async function selectEventArtwork(eventId: string, assetId: string): Promise<ArtworkOutcome> {
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!event) return { action: "skipped", reason: "event not found" };
+
+  const [asset] = await db
+    .select()
+    .from(assetCandidates)
+    .where(and(eq(assetCandidates.id, assetId), eq(assetCandidates.eventId, eventId)))
+    .limit(1);
+  if (!asset) return { action: "skipped", reason: "asset not found for this event" };
+
+  if (!asset.isOfficial) {
+    const others = (await db.select().from(assetCandidates).where(eq(assetCandidates.eventId, eventId)))
+      .filter((r) => r.id !== asset.id)
+      .map((r) => toSelectable(r, null));
+    if (hasOfficialVisual(others)) {
+      return {
+        action: "skipped",
+        reason: "an official flyer exists for this event — remove or replace it first to use generated art instead",
+      };
+    }
+  }
+
+  const reason = "manually selected by an admin";
+  await db
+    .update(events)
+    .set({
+      canonicalAssetId: asset.id,
+      selectedAssetReason: reason,
+      generationStatus: asset.isAiGenerated ? "generated" : "not_needed",
+    })
+    .where(eq(events.id, eventId));
+
+  return { action: asset.isOfficial ? "selected_official" : "selected_existing_generated", assetId: asset.id, reason };
 }

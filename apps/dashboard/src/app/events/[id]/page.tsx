@@ -3,7 +3,12 @@ import { db, eventSources, events, rawContent, sources } from "@college-events/d
 import { mergeEventsAction } from "@/lib/actions";
 import { EditEventForm } from "@/components/EditEventForm";
 import { RegenerateArtworkForm } from "@/components/RegenerateArtworkForm";
+import { ArtworkHistoryPanel } from "@/components/ArtworkHistoryPanel";
 import { notFound } from "next/navigation";
+// Same deep-import reasoning as artwork-action.ts — artwork.ts never
+// imports render.ts's sharp dependency, so this is safe in a Next.js
+// server component.
+import { listEventArtwork } from "@college-events/worker/dist/pipeline/artwork.js";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +36,20 @@ export default async function EventDetailPage({
     .from(events)
     .where(and(eq(events.schoolId, event.schoolId), ne(events.id, id), ne(events.status, "rejected")))
     .limit(30);
+
+  const artworkRows = await listEventArtwork(id);
+  const artworkHistory = artworkRows
+    .filter((a) => a.storageUrl)
+    .map((a) => ({
+      id: a.id,
+      storageUrl: a.storageUrl,
+      isOfficial: a.isOfficial,
+      isAiGenerated: a.isAiGenerated,
+      classification: a.classification,
+      origin: a.origin,
+      createdAt: a.createdAt.toISOString(),
+    }));
+  const currentArtwork = artworkHistory.find((a) => a.id === event.canonicalAssetId);
 
   const bucketScores = event.bucketScores;
   const flags = event.flags;
@@ -92,13 +111,14 @@ export default async function EventDetailPage({
               {event.generationStatus.replace(/_/g, " ")}
             </span>
           </div>
-          {event.sourceImage && (
+          {(currentArtwork?.storageUrl ?? event.sourceImage) && (
             <div style={{ padding: "12px 16px 0" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={event.sourceImage} alt="" style={{ maxWidth: 220, borderRadius: 8 }} />
+              <img src={currentArtwork?.storageUrl ?? event.sourceImage!} alt="" style={{ maxWidth: 220, borderRadius: 8 }} />
             </div>
           )}
           <RegenerateArtworkForm eventId={event.id} comment={event.artworkComment ?? ""} />
+          <ArtworkHistoryPanel eventId={event.id} canonicalAssetId={event.canonicalAssetId} history={artworkHistory} />
         </div>
       </div>
 
