@@ -1,6 +1,7 @@
 # Scrapers
 
-Two Python scrapers that feed College-events. Both write a
+Two Python scrapers that feed College-events, each covering multiple schools
+via its own config file (`engage_schools.json`, `schools.json`). Both write a
 `college_events_import_*.csv` in the exact shape `apps/worker`'s
 `import-csv` command expects (see `packages/ingestion/src/csv-events.ts`).
 
@@ -11,8 +12,35 @@ being awake.
 
 | Script | Source | Needs a browser? | Runs in CI? |
 |---|---|---|---|
-| `scrape_owlcentral.py` | Owl Central (Campus Labs Engage JSON API) | No — stdlib HTTP | Yes |
+| `scrape_owlcentral.py` | Campus Labs Engage JSON API (any school on the platform — FAU calls theirs "Owl Central") | No — stdlib HTTP | Yes |
 | `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
+
+## Campus Labs Engage: adding a school
+
+Campus Labs Engage (`<subdomain>.campuslabs.com/engage`) is a multi-tenant
+platform — the JSON API, field shapes, and theme taxonomy are identical
+across every school on it, only the subdomain changes. `scrape_owlcentral.py`
+reads `engage_schools.json` to know which subdomain maps to which school:
+
+```json
+[
+  { "school": "FAU", "subdomain": "fau" },
+  { "school": "ANOTHERSCHOOL", "subdomain": "anotherschool" }
+]
+```
+
+`school` must match `schools.short_name` in the database. Find a school's
+subdomain by opening their Engage site (usually linked from the student
+involvement/orgs page) — it's the part before `.campuslabs.com` in the URL,
+e.g. `https://fau.campuslabs.com/engage/...` → `fau`. Confirm it's really
+Engage by checking that `https://<subdomain>.campuslabs.com/engage/api/discovery/event/search`
+returns JSON, not a 404.
+
+Every school in the config is scraped by default, each writing its own pair
+of files: `owlcentral_events_<school>.csv` (raw) and
+`college_events_import_<school>_owlcentral.csv` (College-events-ready).
+Pass `--school NAME` to scrape just one, or `--subdomain xyz` for a one-off
+ad-hoc scrape that bypasses the config entirely.
 
 ## posh.vip: two separate problems, one fixed
 

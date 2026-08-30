@@ -92,7 +92,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         id: owlcentral
         continue-on-error: true
-        run: python scrapers/scrape_owlcentral.py --out-dir "$SCRAPE_DIR"
+        run: python scrapers/scrape_owlcentral.py --out-dir "$SCRAPE_DIR" --school "$SCHOOL"
 
       - name: Scrape Posh.vip
         if: steps.gate.outputs.run == 'true'
@@ -122,7 +122,8 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         continue-on-error: true
         run: |
-          f="$SCRAPE_DIR/college_events_import_fau_owlcentral.csv"
+          school_lower=$(echo "$SCHOOL" | tr '[:upper:]' '[:lower:]')
+          f="$SCRAPE_DIR/college_events_import_${school_lower}_owlcentral.csv"
           if [ -f "$f" ]; then
             pnpm worker import-csv "$SCHOOL" "$f" owlcentral-scraper --source="Owl Central (CSV Import)"
           else
@@ -178,8 +179,8 @@ jobs:
               echo 0
             fi
           }
-          owl_count=$(count_rows "$SCRAPE_DIR/college_events_import_fau_owlcentral.csv")
           school_lower=$(echo "$SCHOOL" | tr '[:upper:]' '[:lower:]')
+          owl_count=$(count_rows "$SCRAPE_DIR/college_events_import_${school_lower}_owlcentral.csv")
           posh_count=$(count_rows "$SCRAPE_DIR/college_events_import_$school_lower.csv")
 
           {
