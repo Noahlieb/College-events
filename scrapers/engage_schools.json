@@ -1,3 +1,7 @@
 [
-  { "school": "FAU", "subdomain": "fau" }
+  { "school": "FAU", "subdomain": "fau" },
+  { "school": "UCF", "subdomain": "ucf" },
+  { "school": "FSU", "subdomain": "fsu" },
+  { "school": "FIU", "subdomain": "fiu" },
+  { "school": "UM", "subdomain": "miami" }
 ]
