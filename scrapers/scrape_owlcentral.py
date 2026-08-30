@@ -24,6 +24,8 @@ That --source name must match a manual_submission-type source already
 configured for FAU (Sources page or a DB seed) before import-csv will accept
 rows -- it deliberately won't guess or auto-create one.
 """
+from __future__ import annotations
+
 import argparse
 import csv
 import re
