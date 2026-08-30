@@ -89,6 +89,13 @@ directly by `pnpm worker ingest`.
 which school. Each entry needs a `school` (matching `schools.short_name` in
 the database) and either a single `url` or a `urls` list.
 
+Currently configured: FAU (Boca Raton + Fort Lauderdale), UCF (Orlando), FSU
+(Tallahassee), FIU (Miami), UM (Coral Gables), USF (Tampa). The scraper can
+run for any of these today; posting for the ones beyond FAU still needs a
+`schools` row inserted for them first (see the main README's "Adding a new
+school" section) since `import-csv` resolves the school by `short_name` and
+fails if no matching row exists.
+
 A school can span several nightlife areas — FAU students go out in both
 Boca Raton and Fort Lauderdale — so list them under **one** entry:
 

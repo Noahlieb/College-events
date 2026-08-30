@@ -5,5 +5,35 @@
       "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Boca+Raton%2C+FL%2C+USA%22%2C%22long%22%3A-80.1289321%2C%22lat%22%3A26.3683064%7D",
       "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Fort+Lauderdale%2C+FL%2C+USA%22%2C%22long%22%3A-80.13731740000001%2C%22lat%22%3A26.1224386%7D"
     ]
+  },
+  {
+    "school": "UCF",
+    "urls": [
+      "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Orlando%2C+FL%2C+USA%22%2C%22long%22%3A-81.3792%2C%22lat%22%3A28.5383%7D"
+    ]
+  },
+  {
+    "school": "FSU",
+    "urls": [
+      "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Tallahassee%2C+FL%2C+USA%22%2C%22long%22%3A-84.2807%2C%22lat%22%3A30.4383%7D"
+    ]
+  },
+  {
+    "school": "FIU",
+    "urls": [
+      "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Miami%2C+FL%2C+USA%22%2C%22long%22%3A-80.1918%2C%22lat%22%3A25.7617%7D"
+    ]
+  },
+  {
+    "school": "UM",
+    "urls": [
+      "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Coral+Gables%2C+FL%2C+USA%22%2C%22long%22%3A-80.2684%2C%22lat%22%3A25.7215%7D"
+    ]
+  },
+  {
+    "school": "USF",
+    "urls": [
+      "https://posh.vip/explore?location=%7B%22type%22%3A%22custom%22%2C%22location%22%3A%22Tampa%2C+FL%2C+USA%22%2C%22long%22%3A-82.4572%2C%22lat%22%3A27.9506%7D"
+    ]
   }
 ]
