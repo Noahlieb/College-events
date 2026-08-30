@@ -13,6 +13,7 @@
     "lint": "pnpm -r lint",
     "db:migrate": "pnpm --filter @college-events/db migrate",
     "db:seed": "pnpm --filter @college-events/db seed",
+    "db:add-schools": "pnpm --filter @college-events/db add-schools",
     "db:reset": "pnpm --filter @college-events/db reset",
     "db:studio": "pnpm --filter @college-events/db studio",
     "worker": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker start",

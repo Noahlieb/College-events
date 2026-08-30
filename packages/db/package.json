@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/index.ts",
+    "add-schools": "tsx src/seed/add-schools.ts",
     "reset": "tsx src/reset.ts",
     "generate": "drizzle-kit generate",
     "studio": "drizzle-kit studio",

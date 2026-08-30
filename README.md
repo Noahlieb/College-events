@@ -330,8 +330,9 @@ worker process executes them, exactly like an n8n-triggered run would.
 
 ## Adding a new school
 
-The MVP doesn't ship the `npm run add-school` CLI from spec §49 yet, but the schema
-and every pipeline function are already `school_id`-driven, so adding one today is:
+The MVP doesn't ship an interactive `npm run add-school` wizard from spec §49 yet,
+but the schema and every pipeline function are already `school_id`-driven, so
+adding one today is:
 
 1. Insert a `schools` row — name, short_name, city/state, lat/lng, timezone,
    `branding` (colors + font), `default_radius_miles`, `weekly_schedule` (which
@@ -339,9 +340,15 @@ and every pipeline function are already `school_id`-driven, so adding one today 
 2. Insert `sources` rows for that school — campus + nearby + Instagram watchlist.
 3. Run `pnpm worker ingest <shortName>`, `process`, `select-posts`, `render` as above.
 
-`packages/db/src/seed/data.ts` is a complete worked example (FAU) to copy from. A
-`npm run add-school` wizard that does step 1 interactively is a natural next
-addition — it would just be a thin CLI prompt in front of the same `schools` insert.
+`packages/db/src/seed/data.ts` is a complete worked example (FAU) to copy from.
+
+`pnpm db:add-schools` runs `packages/db/src/seed/add-schools.ts`, which does
+steps 1–2 for `packages/db/src/seed/new-schools.ts`'s list (UCF, FSU, FIU, UM,
+USF today) — real `schools` rows plus each one's real `posh_vip` nightlife
+source, no fabricated events. It's idempotent (upserts the school by
+short_name, skips a source that already exists by name), so re-run it after
+adding real campus/athletics sources through the dashboard. Copy its pattern
+for the next batch of schools rather than writing raw SQL each time.
 
 ## Adding a new source
 
