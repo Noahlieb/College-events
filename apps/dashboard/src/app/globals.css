@@ -63,7 +63,11 @@ h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); text-transform: upp
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 24px;
-  overflow: hidden;
+  /* Horizontal only: a wide table (e.g. Events' 10 columns) needs to
+     scroll into view rather than have its rightmost column — often the
+     row actions — silently clipped off on a narrower viewport. */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .panel-header {
   padding: 12px 16px;
