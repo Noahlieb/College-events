@@ -14,7 +14,11 @@ import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
 import { formatCaptionDayLabel, formatCaptionTimeRange, formatInstagramHandle, formatWeekRangeSentence } from "../lib/format.js";
 
-const MAX_SLIDES_PER_POST = 8;
+// 19 events + 1 cover slide = 20 total, the maximum Instagram allows in a
+// single carousel post. That platform limit, not this codebase, is the
+// real ceiling here — raising this further would build a post the render
+// pipeline is happy with but Instagram itself would reject on publish.
+const MAX_SLIDES_PER_POST = 19;
 
 /**
  * Reads home/away back off an event's flags. Only the athletics feed knows

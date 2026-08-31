@@ -187,7 +187,15 @@ form.inline { display: inline; }
 .slide-radio-hidden:nth-of-type(9):checked ~ .ig-image-frame .slide-image:nth-of-type(9),
 .slide-radio-hidden:nth-of-type(10):checked ~ .ig-image-frame .slide-image:nth-of-type(10),
 .slide-radio-hidden:nth-of-type(11):checked ~ .ig-image-frame .slide-image:nth-of-type(11),
-.slide-radio-hidden:nth-of-type(12):checked ~ .ig-image-frame .slide-image:nth-of-type(12) {
+.slide-radio-hidden:nth-of-type(12):checked ~ .ig-image-frame .slide-image:nth-of-type(12),
+.slide-radio-hidden:nth-of-type(13):checked ~ .ig-image-frame .slide-image:nth-of-type(13),
+.slide-radio-hidden:nth-of-type(14):checked ~ .ig-image-frame .slide-image:nth-of-type(14),
+.slide-radio-hidden:nth-of-type(15):checked ~ .ig-image-frame .slide-image:nth-of-type(15),
+.slide-radio-hidden:nth-of-type(16):checked ~ .ig-image-frame .slide-image:nth-of-type(16),
+.slide-radio-hidden:nth-of-type(17):checked ~ .ig-image-frame .slide-image:nth-of-type(17),
+.slide-radio-hidden:nth-of-type(18):checked ~ .ig-image-frame .slide-image:nth-of-type(18),
+.slide-radio-hidden:nth-of-type(19):checked ~ .ig-image-frame .slide-image:nth-of-type(19),
+.slide-radio-hidden:nth-of-type(20):checked ~ .ig-image-frame .slide-image:nth-of-type(20) {
   display: block;
 }
 .slide-radio-hidden:nth-of-type(1):checked ~ .ig-thumbs .thumb-label:nth-of-type(1),
@@ -201,7 +209,15 @@ form.inline { display: inline; }
 .slide-radio-hidden:nth-of-type(9):checked ~ .ig-thumbs .thumb-label:nth-of-type(9),
 .slide-radio-hidden:nth-of-type(10):checked ~ .ig-thumbs .thumb-label:nth-of-type(10),
 .slide-radio-hidden:nth-of-type(11):checked ~ .ig-thumbs .thumb-label:nth-of-type(11),
-.slide-radio-hidden:nth-of-type(12):checked ~ .ig-thumbs .thumb-label:nth-of-type(12) {
+.slide-radio-hidden:nth-of-type(12):checked ~ .ig-thumbs .thumb-label:nth-of-type(12),
+.slide-radio-hidden:nth-of-type(13):checked ~ .ig-thumbs .thumb-label:nth-of-type(13),
+.slide-radio-hidden:nth-of-type(14):checked ~ .ig-thumbs .thumb-label:nth-of-type(14),
+.slide-radio-hidden:nth-of-type(15):checked ~ .ig-thumbs .thumb-label:nth-of-type(15),
+.slide-radio-hidden:nth-of-type(16):checked ~ .ig-thumbs .thumb-label:nth-of-type(16),
+.slide-radio-hidden:nth-of-type(17):checked ~ .ig-thumbs .thumb-label:nth-of-type(17),
+.slide-radio-hidden:nth-of-type(18):checked ~ .ig-thumbs .thumb-label:nth-of-type(18),
+.slide-radio-hidden:nth-of-type(19):checked ~ .ig-thumbs .thumb-label:nth-of-type(19),
+.slide-radio-hidden:nth-of-type(20):checked ~ .ig-thumbs .thumb-label:nth-of-type(20) {
   border-color: var(--accent);
   opacity: 1;
 }
