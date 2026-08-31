@@ -119,7 +119,7 @@ def run_generic_schools(config_path: Path, days_ahead: int, out_dir: Path) -> li
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape every configured school (Campus Labs Engage + generic) in one run.")
-    parser.add_argument("--out-dir", default=str(Path(__file__).parent), help="directory for output CSVs")
+    parser.add_argument("--out-dir", default=str(Path.home() / "Downloads"), help="directory for output CSVs (default: ~/Downloads)")
     parser.add_argument("--days-ahead", type=int, default=60,
                          help="only keep events starting within N days from now (default: 60; 0 disables filtering)")
     parser.add_argument("--engage-config", default=str(Path(__file__).parent / "engage_schools.json"))

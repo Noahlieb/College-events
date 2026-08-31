@@ -130,6 +130,17 @@ came back with 4,654 events, the whole semester's worth including ones
 already past, until this filter was added. Pass `--days-ahead 0` to keep
 everything unfiltered.
 
+**Image backfill.** `.ics` has no field for an image at all (neither does
+`ical.ts`'s parser), so any event found via `.ics` discovery comes back
+with `image_url` empty. For every event still missing one after the main
+strategies run, this fetches that event's own page and reads its
+`og:image` (falling back to `twitter:image`) meta tag — the same thing
+Slack/iMessage/social read to build a link preview, so it's a reliable
+signal regardless of the underlying platform. Skips anything that isn't
+really a per-event link (the feed's own URL, or another `.ics` link) and
+caches by URL so events sharing one link are only fetched once. Pass
+`--no-image-backfill` to skip this and go faster.
+
 **Verified with unit tests against synthetic data, not a live site** — this
 environment's network access doesn't reach arbitrary school domains, so
 each strategy (`.ics` discovery/parsing, JSON:API-shaped network responses,

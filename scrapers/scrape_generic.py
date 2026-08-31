@@ -45,6 +45,7 @@ import json
 import re
 import ssl
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -342,6 +343,65 @@ def find_ics_urls(html: str) -> list[str]:
 def scrape_ics(url: str) -> list[dict]:
     text = fetch_text(url)
     return [map_ics_event(ev, url) for ev in parse_ics(text)]
+
+
+_META_TAG_RE = re.compile(r"<meta\s+[^>]*>", re.IGNORECASE)
+_META_IMAGE_NAME_RE = re.compile(r'(?:property|name)\s*=\s*["\'](?:og:image|twitter:image)["\']', re.IGNORECASE)
+_META_CONTENT_RE = re.compile(r'content\s*=\s*["\']([^"\']*)["\']', re.IGNORECASE)
+
+
+def _extract_og_image(html: str) -> str | None:
+    """og:image (or its twitter:image fallback) is how a page declares its
+    own preview image for link unfurls (Slack, iMessage, social) --
+    virtually universal regardless of platform, which makes it a far more
+    reliable generic signal than reverse-engineering one vendor's card
+    markup. Matches the whole <meta> tag first so attribute order (content
+    before or after property/name) doesn't matter."""
+    for tag in _META_TAG_RE.findall(html):
+        if _META_IMAGE_NAME_RE.search(tag):
+            m = _META_CONTENT_RE.search(tag)
+            if m and m.group(1):
+                return m.group(1)
+    return None
+
+
+def fetch_page_image(url: str, timeout: int = 15) -> str | None:
+    req = urllib.request.Request(url, headers={"Accept": "text/html", "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as resp:
+            # og:image lives in <head>, at the top of the document -- no
+            # need to read a potentially large page in full.
+            html = resp.read(800_000).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    return _extract_og_image(html)
+
+
+def backfill_missing_images(events: list[dict], source_url: str, delay: float = 0.15) -> int:
+    """Fetches each event's own page to fill in image_url where a source
+    (an .ics feed, especially -- RFC 5545 has no image field at all)
+    supplied none. Skips anything that isn't really a per-event link:
+    `source_url` itself (map_ics_event falls back to the feed URL when a
+    VEVENT has no URL of its own -- fetching that would just find the
+    feed's own page, if any, misattributed to every event that hit the
+    fallback) and any other `.ics` URL. Caches by URL so events that
+    share one link -- including that fallback case -- are only fetched
+    once rather than once per event."""
+    cache: dict[str, str | None] = {}
+    filled = 0
+    for row in events:
+        if row.get("image_url"):
+            continue
+        url = row.get("url")
+        if not url or url == source_url or url.lower().split("?")[0].endswith(".ics"):
+            continue
+        if url not in cache:
+            cache[url] = fetch_page_image(url)
+            time.sleep(delay)
+        if cache[url]:
+            row["image_url"] = cache[url]
+            filled += 1
+    return filled
 
 
 def _find_field(item: dict, keys: set) -> tuple[str, object] | None:
@@ -658,7 +718,7 @@ def main() -> None:
     )
     parser.add_argument("--url", required=True, help="the events page to scrape")
     parser.add_argument("--school", required=True, help="school short name, used to name the output files")
-    parser.add_argument("--out-dir", default=str(Path(__file__).parent), help="directory for output CSVs")
+    parser.add_argument("--out-dir", default=str(Path.home() / "Downloads"), help="directory for output CSVs (default: ~/Downloads)")
     parser.add_argument("--headed", action="store_true", help="show the browser window (debugging)")
     parser.add_argument("--scroll-steps", type=int, default=SCROLL_STEPS, help="how many scroll attempts to trigger lazy-loaded listings")
     parser.add_argument("--days-ahead", type=int, default=60,
@@ -669,6 +729,12 @@ def main() -> None:
         action="store_true",
         help="save the rendered HTML and a summary of every JSON array the network sniff considered, "
         "without requiring a successful match first -- for tuning this against a new site",
+    )
+    parser.add_argument(
+        "--no-image-backfill",
+        action="store_true",
+        help="skip fetching each event's own page to fill in a missing image_url via its og:image meta tag "
+        "(faster, but sources with no image field of their own -- .ics feeds especially -- come back with none)",
     )
     args = parser.parse_args()
     headless = not args.headed
@@ -700,6 +766,12 @@ def main() -> None:
             file=sys.stderr,
         )
         return
+
+    if not args.no_image_backfill:
+        missing_before = sum(1 for e in events if not e.get("image_url"))
+        if missing_before:
+            filled = backfill_missing_images(events, args.url)
+            print(f"  image backfill: filled {filled}/{missing_before} missing image_url(s) via each event's own page", file=sys.stderr)
 
     raw_path = out_dir / f"generic_events_{school_lower}.csv"
     raw_count = save_raw_csv(events, raw_path)

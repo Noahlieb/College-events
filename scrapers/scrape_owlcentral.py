@@ -268,7 +268,7 @@ def main() -> None:
     parser.add_argument("--school", help="only scrape the school with this name in the config (or, with --subdomain, the label for an ad-hoc scrape)")
     parser.add_argument("--subdomain", help="ad-hoc single Engage subdomain (e.g. 'fau' for fau.campuslabs.com), bypassing the config file")
     parser.add_argument("--days-ahead", type=int, default=60, help="Only include events starting within N days from now (default: 60)")
-    parser.add_argument("--out-dir", default=str(Path(__file__).parent), help="directory for output CSVs")
+    parser.add_argument("--out-dir", default=str(Path.home() / "Downloads"), help="directory for output CSVs (default: ~/Downloads)")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
