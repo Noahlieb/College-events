@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EventDateParseError, daysUntil, isExpired, parseEventDate } from "./dates.js";
+import { EventDateParseError, daysUntil, isExpired, parseEventDate, toLocalDateAndTime } from "./dates.js";
 
 const NYC = "America/New_York"; // FAU (Boca Raton) is US/Eastern
 
@@ -41,6 +41,24 @@ describe("parseEventDate", () => {
     expect(() => parseEventDate({ date: "08/21/2026", startTime: "19:00", timezone: NYC })).toThrow(
       EventDateParseError,
     );
+  });
+});
+
+describe("toLocalDateAndTime", () => {
+  it("splits a UTC instant into its local calendar date and 24h time (the inverse of parseEventDate)", () => {
+    // 2026-08-31T13:00:00Z is EDT (UTC-4) -> 9:00 AM local
+    const result = toLocalDateAndTime("2026-08-31T13:00:00+00:00", NYC);
+    expect(result).toEqual({ date: "2026-08-31", time: "09:00" });
+  });
+
+  it("rolls the local date back a day when UTC has already crossed midnight", () => {
+    // 2026-08-31T02:00:00Z is still 10:00 PM Aug 30 Eastern
+    const result = toLocalDateAndTime("2026-08-31T02:00:00Z", NYC);
+    expect(result).toEqual({ date: "2026-08-30", time: "22:00" });
+  });
+
+  it("returns null for an unparseable instant instead of throwing", () => {
+    expect(toLocalDateAndTime("not-a-date", NYC)).toBeNull();
   });
 });
 

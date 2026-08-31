@@ -1,4 +1,4 @@
-import { categorizeEvent, EVENT_CATEGORIES, type EventCategory } from "@college-events/core";
+import { categorizeEvent, EVENT_CATEGORIES, toLocalDateAndTime, type EventCategory } from "@college-events/core";
 import { parseCsvRecords, pickField } from "./csv.js";
 import type { ManualEventInput } from "./manual.js";
 
@@ -259,15 +259,106 @@ function parsePoshEventsCsv(csvText: string, opts: { defaultCity: string; submit
 }
 
 /**
- * Single entry point for both accepted CSV shapes — the manual/spreadsheet
- * format (Date, Event, Time (ET), ...) and the posh.vip scraper's own
- * export format (start_date, name, event_url, ...). Dispatches purely on
- * which columns the header row actually has, so callers (the dashboard's
- * import action, the worker CLI) never need to know or ask which format a
- * given file is in.
+ * Parses a Campus Labs Engage export: school, platform, name, organization,
+ * starts_on, ends_on, location, description, url, image_url. Unlike
+ * posh.vip's start_date/end_date (already local wall-clock text, see
+ * splitLocalIso above), Engage's starts_on/ends_on are genuine UTC instants
+ * (Campus Labs' API convention) — e.g. "2026-08-31T13:00:00+00:00" for a
+ * 9am Eastern event — so they need a real timezone conversion, via
+ * toLocalDateAndTime, rather than a direct slice of the string.
  */
-export function parseEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string }): CsvParseResult {
+function parseEngageEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string; timezone: string }): CsvParseResult {
+  const records = parseCsvRecords(csvText);
+  const rows: CsvEventRow[] = [];
+  const errors: CsvParseError[] = [];
+
+  records.forEach((record, idx) => {
+    const rowNumber = idx + 1;
+    const name = pickField(record, "name", "Event", "Title");
+    const startsOn = pickField(record, "starts_on");
+    const endsOn = pickField(record, "ends_on");
+    const venueRaw = pickField(record, "location", "Venue");
+    const notes = pickField(record, "description", "Notes");
+    const imageUrl = pickField(record, "image_url", "Image URL");
+    const link = pickField(record, "url", "Link");
+    const presenter = pickField(record, "organization", "Presenter/Team");
+    const university = pickField(record, "school", "University", "Campus");
+
+    if (!name) {
+      errors.push({ rowNumber, reason: "missing Event/Name" });
+      return;
+    }
+
+    const start = toLocalDateAndTime(startsOn, opts.timezone);
+    if (!start) {
+      errors.push({ rowNumber, reason: `missing or unparseable starts_on ("${startsOn}") — expected an ISO 8601 datetime` });
+      return;
+    }
+
+    // A multi-day span (e.g. a tabling event running Mon-Fri) can't be
+    // represented by this importer's single-date model — only keep the end
+    // clock time when it falls on the same local calendar day as the
+    // start; otherwise leave it null rather than mis-stating a multi-day
+    // event as a few-hour one.
+    const end = endsOn ? toLocalDateAndTime(endsOn, opts.timezone) : null;
+    const endTime = end && end.date === start.date ? end.time : null;
+
+    const { venue, city } = splitVenue(venueRaw, opts.defaultCity);
+    const category = resolveCategory("", name, notes); // no explicit Category column in this export
+    const ageRequirement = /\b21\+/.test(`${name} ${notes}`) ? "21+" : null;
+    const isRecurring = /\brecurring\b/i.test(notes);
+    const description = [notes, venueRaw && venue !== venueRaw ? venueRaw : null].filter(Boolean).join(" — ") || name;
+
+    rows.push({
+      rowNumber,
+      universityHint: university || null,
+      input: {
+        name,
+        date: start.date,
+        startTime: start.time,
+        endTime,
+        venue: venue || null,
+        city: city || null,
+        price: null,
+        description,
+        flyerUrl: imageUrl || null,
+        sourceUrl: link || null,
+        category,
+        organization: presenter || null,
+        ageRequirement,
+        isRecurring,
+        submittedBy: opts.submittedBy,
+      },
+    });
+  });
+
+  return { rows, errors };
+}
+
+/**
+ * Single entry point for all accepted CSV shapes — the manual/spreadsheet
+ * format (Date, Event, Time (ET), ...), the posh.vip scraper's own export
+ * format (start_date, name, event_url, ...), and a Campus Labs Engage
+ * export (starts_on, name, location, ...). Dispatches purely on which
+ * columns the header row actually has, so callers (the dashboard's import
+ * action, the worker CLI) never need to know or ask which format a given
+ * file is in.
+ *
+ * `timezone` only matters for the Engage format's UTC->local conversion
+ * (defaults to America/New_York, same FAU-centric default `defaultCity`
+ * already implies elsewhere in this file); like `defaultCity`, a single
+ * value is applied across the whole file even when individual rows route
+ * to different schools via their own University/School column — accurate
+ * for the common case of one region's schools sharing a timezone, same
+ * tradeoff this parser already makes for defaultCity.
+ */
+export function parseEventsCsv(csvText: string, opts: { defaultCity: string; submittedBy: string; timezone?: string }): CsvParseResult {
   const headerLine = csvText.split(/\r?\n/, 1)[0] ?? "";
   const isPoshFormat = /(^|,)\s*start_date\s*(,|$)/i.test(headerLine);
-  return isPoshFormat ? parsePoshEventsCsv(csvText, opts) : parseSpreadsheetEventsCsv(csvText, opts);
+  if (isPoshFormat) return parsePoshEventsCsv(csvText, opts);
+
+  const isEngageFormat = /(^|,)\s*starts_on\s*(,|$)/i.test(headerLine) && !/(^|,)\s*date\s*(,|$)/i.test(headerLine);
+  if (isEngageFormat) return parseEngageEventsCsv(csvText, { ...opts, timezone: opts.timezone ?? "America/New_York" });
+
+  return parseSpreadsheetEventsCsv(csvText, opts);
 }

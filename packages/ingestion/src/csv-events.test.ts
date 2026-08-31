@@ -150,3 +150,89 @@ describe("parseEventsCsv — University column (multi-school uploads)", () => {
     expect(rows[0]!.universityHint).toBeNull();
   });
 });
+
+describe("parseEventsCsv — Campus Labs Engage export", () => {
+  const ENGAGE_HEADER = "school,platform,name,organization,starts_on,ends_on,location,description,url,image_url";
+
+  function engageCsv(...rows: string[]): string {
+    return [ENGAGE_HEADER, ...rows].join("\n");
+  }
+
+  it("detects the starts_on/ends_on shape and converts UTC instants to local date/time", () => {
+    const { rows, errors } = parseEventsCsv(
+      engageCsv(
+        'FAU,campus_labs_engage,FAU Dance Practice,FAU Spirit,2026-08-31T13:00:00+00:00,2026-08-31T16:00:00+00:00,"mac gym ",This will be our practice time,https://fau.campuslabs.com/engage/event/12600834,',
+      ),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    const { input } = rows[0]!;
+    expect(input.name).toBe("FAU Dance Practice");
+    // Aug 31 2026 is EDT (UTC-4): 13:00Z -> 9:00 AM local, 16:00Z -> 12:00 PM local
+    expect(input.date).toBe("2026-08-31");
+    expect(input.startTime).toBe("09:00");
+    expect(input.endTime).toBe("12:00");
+    expect(input.venue).toBe("mac gym");
+    expect(input.organization).toBe("FAU Spirit");
+    expect(input.sourceUrl).toBe("https://fau.campuslabs.com/engage/event/12600834");
+  });
+
+  it("carries the school column as universityHint, same as the spreadsheet format's University column", () => {
+    const { rows } = parseEventsCsv(
+      engageCsv(
+        "USF,campus_labs_engage,Splatoon Club Meeting,USF Splatoon,2026-09-01T20:00:00+00:00,,Gaming Lounge,Weekly meetup,https://x.com,",
+      ),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(rows[0]!.universityHint).toBe("USF");
+  });
+
+  it("drops the end time (but keeps the start) when the event spans multiple local calendar days", () => {
+    const { rows } = parseEventsCsv(
+      engageCsv(
+        "FAU,campus_labs_engage,Poster Sale,Owls Racing,2026-08-31T14:00:00+00:00,2026-09-04T21:00:00+00:00,Arena Patio,Fundraiser,https://x.com,",
+      ),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(rows[0]!.input.date).toBe("2026-08-31");
+    expect(rows[0]!.input.startTime).toBe("10:00");
+    expect(rows[0]!.input.endTime).toBeNull();
+  });
+
+  it("reports a row-level error for an unparseable starts_on instead of throwing", () => {
+    const { rows, errors } = parseEventsCsv(engageCsv("FAU,campus_labs_engage,Some Event,,not-a-date,,,,https://x.com,"), {
+      defaultCity: "Boca Raton",
+      submittedBy: "test",
+      timezone: "America/New_York",
+    });
+    expect(rows).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.reason).toContain("starts_on");
+  });
+
+  it("defaults the timezone to America/New_York when the caller doesn't pass one", () => {
+    const { rows } = parseEventsCsv(
+      engageCsv("FAU,campus_labs_engage,FAU Dance Practice,FAU Spirit,2026-08-31T13:00:00+00:00,,mac gym,Practice,https://x.com,"),
+      { defaultCity: "Boca Raton", submittedBy: "test" },
+    );
+    expect(rows[0]!.input.startTime).toBe("09:00");
+  });
+
+  it("does not get misdetected as the posh.vip format, and vice versa", () => {
+    // Guards the header-sniffing regexes against a false match — "starts_on"
+    // must never trip the posh.vip "start_date" check or vice versa.
+    const { rows: engageRows } = parseEventsCsv(
+      engageCsv("FAU,campus_labs_engage,Some Event,,2026-08-31T13:00:00+00:00,,,,https://x.com,"),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(engageRows[0]!.input.startTime).toBe("09:00");
+
+    const poshCsv = [
+      "scraped_at,school,name,start_date,end_date,venue,address,organizer,description,image_url,event_url",
+      "2026-08-30T00:00:00Z,FAU,Some Club Night,2026-08-31T22:00:00-04:00,,Culture Room,,,,,https://x.com",
+    ].join("\n");
+    const { rows: poshRows } = parseEventsCsv(poshCsv, { defaultCity: "Boca Raton", submittedBy: "test" });
+    expect(poshRows[0]!.input.startTime).toBe("22:00");
+  });
+});

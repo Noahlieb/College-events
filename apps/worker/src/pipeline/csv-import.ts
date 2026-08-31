@@ -115,7 +115,11 @@ export async function importCsvEvents(
     );
   }
 
-  const { rows, errors: parseErrors } = parseEventsCsv(csvText, { defaultCity: defaultSchool.city, submittedBy });
+  const { rows, errors: parseErrors } = parseEventsCsv(csvText, {
+    defaultCity: defaultSchool.city,
+    submittedBy,
+    timezone: defaultSchool.timezone,
+  });
 
   const summary: CsvImportSummary = {
     totalRows: rows.length + parseErrors.length,
