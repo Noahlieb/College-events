@@ -189,6 +189,38 @@ function splitLocalIso(iso: string): { date: string; time: string } | null {
 }
 
 /**
+ * Cheap sanity check for a shifted/misaligned row.
+ *
+ * A scraper (scrape_posh.py and its Engage counterpart both build one CSV
+ * row per event with a fixed column list) can silently write one fewer
+ * comma-delimited field than the header expects when a single field
+ * happens to be genuinely empty for that event — an omitted field rather
+ * than an empty one. That doesn't change the row's total field count, so
+ * `parseCsvRecords` reports success; it just shifts every field after the
+ * gap one position to the left, so `description` ends up holding what was
+ * meant to be the image URL, `image_url` ends up holding the event URL,
+ * and so on. Importing that silently is worse than rejecting the row —
+ * it produces a slide with a raw URL printed as the description and no
+ * image at all, with nothing in the import summary explaining why.
+ *
+ * Checked instead of hardened against: there's no reliable way to know
+ * *which* field the scraper dropped, so realigning the row would be a
+ * guess. Flagging it lets a human re-scrape or hand-fix that one row.
+ */
+function shiftedRowReason(fields: { description?: string; imageUrl?: string; venue?: string }): string | null {
+  if (fields.description && /^https?:\/\//i.test(fields.description.trim())) {
+    return `description looks like a URL ("${fields.description.slice(0, 60)}…") instead of text`;
+  }
+  if (fields.imageUrl && !/^https?:\/\//i.test(fields.imageUrl.trim())) {
+    return `image_url doesn't look like a URL ("${fields.imageUrl.slice(0, 60)}…")`;
+  }
+  if (fields.venue && fields.venue.length > 150) {
+    return `venue is implausibly long (${fields.venue.length} chars) for a venue name`;
+  }
+  return null;
+}
+
+/**
  * Parses the alternate schema produced by the posh.vip scraper
  * (scrape_posh.py): scraped_at, school, name, start_date, end_date, venue,
  * address, organizer, description, image_url, event_url. There's no
@@ -216,6 +248,14 @@ function parsePoshEventsCsv(csvText: string, opts: { defaultCity: string; submit
 
     if (!name) {
       errors.push({ rowNumber, reason: "missing name" });
+      return;
+    }
+    const shiftReason = shiftedRowReason({ description, imageUrl, venue });
+    if (shiftReason) {
+      errors.push({
+        rowNumber,
+        reason: `row's columns look shifted (${shiftReason}) — likely a field the scraper left out entirely rather than blank; skipping to avoid importing garbled data`,
+      });
       return;
     }
     const start = splitLocalIso(startDateRaw);
@@ -286,6 +326,14 @@ function parseEngageEventsCsv(csvText: string, opts: { defaultCity: string; subm
 
     if (!name) {
       errors.push({ rowNumber, reason: "missing Event/Name" });
+      return;
+    }
+    const shiftReason = shiftedRowReason({ description: notes, imageUrl, venue: venueRaw });
+    if (shiftReason) {
+      errors.push({
+        rowNumber,
+        reason: `row's columns look shifted (${shiftReason}) — likely a field the export left out entirely rather than blank; skipping to avoid importing garbled data`,
+      });
       return;
     }
 
