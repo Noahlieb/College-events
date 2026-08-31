@@ -8,25 +8,34 @@ of those (e.g. CampusGroups, Presence, a homegrown calendar): point it at
 one events page URL and it tries, in order, whichever of these actually
 finds real events:
 
-  1. Render the page in a real browser and sniff every XHR/fetch response
+  1. Find and parse a public iCalendar (.ics) feed -- RFC 5545, the same
+     structured format packages/ingestion/src/ical.ts already treats as
+     the preferred source over HTML scraping. Pass an .ics URL directly
+     and this skips the browser entirely; given a regular events page, it
+     also scans the rendered HTML for any embedded .ics URL (most campus
+     calendar platforms -- Engage included, per ical.ts's own comment --
+     expose a "subscribe to calendar" link even when the page itself is a
+     scraping-hostile SPA) and uses that when found.
+  2. Render the page in a real browser and sniff every XHR/fetch response
      for JSON -- most modern event sites are single-page apps that load
      their listing from their own internal API, and that response is
      almost always a list of dicts that share a name-like key and a
      date-like key. This is what a human would find by opening DevTools'
      Network tab and looking for the request that returns the event list;
      this automates that search rather than hardcoding one site's endpoint.
-  2. Parse schema.org Event structured data (<script type="application/
+  3. Parse schema.org Event structured data (<script type="application/
      ld+json">) out of the rendered page. This is the same JSON-LD format
      scrape_posh.py already trusts as its primary source on posh.vip's own
      /e/ detail pages -- many event platforms emit it for SEO regardless
      of how the page itself renders.
 
-Both are best-effort: field names vary site to site, so extraction matches
-against a list of common aliases (see NAME_KEYS / START_KEYS / etc. below)
-rather than one fixed schema. Run with --diagnose to see what each strategy
-found (and why) without needing a successful match first -- essential for
-tuning this against a new site, since there's no single API contract to
-verify against ahead of time the way there is for scrape_owlcentral.py.
+All three are best-effort: field names vary site to site, so extraction
+matches against a list of common aliases (see NAME_KEYS / START_KEYS /
+etc. below) rather than one fixed schema. Run with --diagnose to see what
+each strategy found (and why) without needing a successful match first --
+essential for tuning this against a new site, since there's no single API
+contract to verify against ahead of time the way there is for
+scrape_owlcentral.py.
 """
 from __future__ import annotations
 
@@ -34,19 +43,24 @@ import argparse
 import csv
 import json
 import re
+import ssl
 import sys
 import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import certifi
 from playwright.sync_api import sync_playwright
 
 try:
     from dateutil import parser as dateutil_parser
 except ImportError:  # pragma: no cover - guarded, see requirements.txt
     dateutil_parser = None
+
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -79,6 +93,13 @@ ID_KEYS = {"id", "eventid", "uuid", "guid", "pk"}
 # Some APIs nest the real fields one level down under a wrapper -- JSON:API's
 # "attributes"/"data", GraphQL's "node", Airtable/CMS-style "fields".
 WRAPPER_KEYS = ("fields", "attributes", "data", "node")
+
+# Matches a bare .ics URL embedded anywhere in a page's HTML/inline JS --
+# e.g. CampusGroups' "subscribe to calendar" feature builds one as a plain
+# string literal (`return "https://school.edu/ical/x/feed.ics"`) rather than
+# fetching it via XHR, so it never shows up in the network sniff and has to
+# be found by scanning the page source text directly.
+ICS_URL_RE = re.compile(r'https?://[^\s"\'<>\\]+\.ics(?:\?[^\s"\'<>\\]*)?', re.IGNORECASE)
 
 
 def _norm_key(k: str) -> str:
@@ -214,6 +235,113 @@ def map_jsonld_event(ev: dict, base_url: str) -> dict:
         "image_url": first_image(ev.get("image")),
         "found_via": "jsonld",
     }
+
+
+def fetch_text(url: str, timeout: int = 30) -> str:
+    req = urllib.request.Request(url, headers={"Accept": "text/calendar, text/plain", "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def parse_ics(text: str) -> list[dict]:
+    """Minimal RFC 5545 VEVENT parser -- a Python port of
+    packages/ingestion/src/ical.ts's parseIcs, kept dependency-free the same
+    way and for the same reason: ICS is simple enough that a small parser is
+    easier to reason about than pulling in a library for it."""
+    unfolded = text.replace("\r\n", "\n").replace("\n ", "").replace("\n\t", "")  # RFC5545 line unfolding
+    lines = [ln for ln in unfolded.split("\n") if ln]
+
+    events: list[dict] = []
+    current: dict | None = None
+    for line in lines:
+        if line.startswith("BEGIN:VEVENT"):
+            current = {}
+            continue
+        if line.startswith("END:VEVENT"):
+            if current is not None:
+                events.append(current)
+            current = None
+            continue
+        if current is None:
+            continue
+
+        sep = line.find(":")
+        if sep == -1:
+            continue
+        raw_key = line[:sep]
+        value = line[sep + 1:].strip()
+        key = raw_key.split(";")[0].upper()  # strip params like ;TZID=...
+
+        if key == "UID":
+            current["uid"] = value
+        elif key == "SUMMARY":
+            current["summary"] = _unescape_ics_text(value)
+        elif key == "DESCRIPTION":
+            current["description"] = _unescape_ics_text(value)
+        elif key == "LOCATION":
+            current["location"] = _unescape_ics_text(value)
+        elif key == "URL":
+            current["url"] = value
+        elif key == "DTSTART":
+            current["dtstart"] = value
+        elif key == "DTEND":
+            current["dtend"] = value
+    return events
+
+
+def _unescape_ics_text(value: str) -> str:
+    return value.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
+
+
+def ics_date_to_iso(value: str | None) -> str | None:
+    """Converts an ICS DTSTART/DTEND value ("20260826T180000Z" or "20260826")
+    to ISO 8601, mirroring packages/ingestion/src/ical.ts's icsDateToIso."""
+    if not value:
+        return None
+    m = re.match(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$", value)
+    if m:
+        y, mo, d, h, mi, s = m.groups()
+        return f"{y}-{mo}-{d}T{h}:{mi}:{s}.000Z"
+    m = re.match(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$", value)
+    if m:
+        y, mo, d, h, mi, s = m.groups()
+        # No explicit offset/TZID -- treated as already-Eastern, same
+        # assumption parse_when() makes for any other naive timestamp.
+        return f"{y}-{mo}-{d}T{h}:{mi}:{s}"
+    m = re.match(r"^(\d{4})(\d{2})(\d{2})$", value)
+    if m:
+        y, mo, d = m.groups()
+        return f"{y}-{mo}-{d}T00:00:00"
+    return None
+
+
+def map_ics_event(ev: dict, source_url: str) -> dict:
+    return {
+        "id": ev.get("uid") or "",
+        "name": (ev.get("summary") or "").strip(),
+        "organization": "",
+        "starts_on": ics_date_to_iso(ev.get("dtstart")),
+        "ends_on": ics_date_to_iso(ev.get("dtend")),
+        "location": (ev.get("location") or "").strip(),
+        "description": ev.get("description") or "",
+        "url": ev.get("url") or source_url,
+        "image_url": "",
+        "found_via": "ics",
+    }
+
+
+def find_ics_urls(html: str) -> list[str]:
+    seen = []
+    for m in ICS_URL_RE.finditer(html):
+        url = m.group(0)
+        if url not in seen:
+            seen.append(url)
+    return seen
+
+
+def scrape_ics(url: str) -> list[dict]:
+    text = fetch_text(url)
+    return [map_ics_event(ev, url) for ev in parse_ics(text)]
 
 
 def _find_field(item: dict, keys: set) -> tuple[str, object] | None:
@@ -429,6 +557,23 @@ def scrape_url(url: str, headless: bool = True, scroll_steps: int = SCROLL_STEPS
     events: list[dict] = []
     seen = set()
 
+    ics_urls = find_ics_urls(html)
+    ics_used = 0
+    for ics_url in ics_urls:
+        try:
+            for row in scrape_ics(ics_url):
+                key = _dedupe_key(row)
+                if row["name"] and key not in seen:
+                    seen.add(key)
+                    events.append(row)
+                    ics_used += 1
+        except Exception as e:
+            print(f"  found .ics link {ics_url} but couldn't fetch/parse it: {e}", file=sys.stderr)
+    if ics_urls:
+        print(f"  .ics discovery: found {ics_urls}, {ics_used} usable event(s)", file=sys.stderr)
+    else:
+        print("  .ics discovery: no .ics URL found in the page", file=sys.stderr)
+
     jsonld_events = extract_jsonld_events(html)
     jsonld_used = 0
     for ev in jsonld_events:
@@ -508,9 +653,15 @@ def main() -> None:
     debug_dir = (out_dir / "debug") if args.diagnose else None
     school_lower = args.school.lower()
 
-    print(f"Loading {args.school}: {args.url} ...", file=sys.stderr)
-    events = scrape_url(args.url, headless=headless, scroll_steps=args.scroll_steps,
-                         debug_dir=debug_dir, debug_label=school_lower)
+    url_path = urllib.parse.urlparse(args.url).path.lower()
+    if url_path.endswith(".ics"):
+        # A direct feed URL needs no browser at all -- plain HTTP GET + parse.
+        print(f"Loading {args.school}: {args.url} (.ics feed) ...", file=sys.stderr)
+        events = scrape_ics(args.url)
+    else:
+        print(f"Loading {args.school}: {args.url} ...", file=sys.stderr)
+        events = scrape_url(args.url, headless=headless, scroll_steps=args.scroll_steps,
+                             debug_dir=debug_dir, debug_label=school_lower)
     print(f"  found {len(events)} event(s) total.", file=sys.stderr)
 
     if not events:

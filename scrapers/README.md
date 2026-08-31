@@ -50,9 +50,20 @@ ad-hoc scrape that bypasses the config entirely.
 Some schools run neither of the above — a different platform entirely (e.g.
 CampusGroups, Presence, a homegrown calendar). Rather than hardcoding a
 third vendor's API, `scrape_generic.py` takes any one events-page URL and
-tries two vendor-agnostic strategies, using whichever actually finds events:
+tries three vendor-agnostic strategies in order, using whichever actually
+finds events:
 
-1. **Network sniffing.** It loads the page in a real (Playwright) browser
+1. **.ics discovery.** Most campus calendar platforms — Engage included,
+   see `packages/ingestion/src/ical.ts` — expose a public iCalendar feed via
+   a "subscribe to calendar" link, even when the page itself is a
+   scraping-hostile SPA. This scans the rendered page's HTML/inline JS for
+   any embedded `.ics` URL (CampusGroups, for one, builds it client-side as
+   a plain string literal rather than fetching it, so it never shows up as
+   a network request) and, when found, fetches and parses it directly —
+   RFC 5545, the same structured format `ical.ts` already treats as
+   preferred over HTML scraping. Pass an `.ics` URL to `--url` directly and
+   it skips the browser step entirely.
+2. **Network sniffing.** It loads the page in a real (Playwright) browser
    and inspects every XHR/fetch response for JSON, scoring each array it
    finds for how many items look event-shaped (a name-like key *and* a
    date-like key, checking common aliases and one level of JSON:API-style
@@ -61,14 +72,18 @@ tries two vendor-agnostic strategies, using whichever actually finds events:
    returns the event list — automated, and it will pick up whatever
    internal API the site actually uses without that API needing to be
    named anywhere in this repo.
-2. **schema.org JSON-LD.** It also parses any `<script type="application/
+3. **schema.org JSON-LD.** It also parses any `<script type="application/
    ld+json">` blocks with `"@type": "Event"` out of the rendered page —
    the same structured-data format `scrape_posh.py` already trusts for
    posh.vip's own event detail pages. Many sites emit this for SEO
    regardless of how the page itself renders.
 
 ```bash
+# events page -- tries .ics discovery, then network sniff, then JSON-LD
 python scrapers/scrape_generic.py --url https://bullsconnect.usf.edu/events --school USF --out-dir /tmp/scrape
+
+# a known .ics feed directly -- skips the browser, just fetches + parses
+python scrapers/scrape_generic.py --url https://bullsconnect.usf.edu/ical/usf/ical_usf.ics --school USF --out-dir /tmp/scrape
 ```
 
 Writes `generic_events_<school>.csv` (raw) and
@@ -76,18 +91,20 @@ Writes `generic_events_<school>.csv` (raw) and
 naming pattern as the other two scrapers. `Category` is always `"other"` —
 unlike Engage, there's no shared theme taxonomy to map from.
 
-**This is unverified against any real site** — it was built and unit-tested
-against synthetic HTML/JSON shaped like common event-API responses, not
-against a live page, since this environment's network access doesn't reach
-arbitrary school sites. If it finds 0 events on the real thing, run with
-`--diagnose`: it saves the rendered HTML plus a summary of every JSON array
-the network sniff considered (its source URL, length, score, and sample
-keys) to `<out-dir>/debug/`, without requiring a match first. Compare that
-against what the site's DevTools Network tab actually shows — most misses
-will be a key-name alias this script doesn't yet know about (add it to
-`NAME_KEYS`/`START_KEYS`/etc. at the top of the script) or a listing that
-needs a real interaction (pagination click, a filter) beyond the scroll
-this script already does.
+**Verified with unit tests against synthetic data, not a live site** — this
+environment's network access doesn't reach arbitrary school domains, so
+each strategy (`.ics` discovery/parsing, JSON:API-shaped network responses,
+JSON-LD) was checked against hand-built HTML/ICS/JSON fixtures shaped like
+real ones, never the actual page. If it finds 0 events on the real thing,
+run with `--diagnose`: it saves the rendered HTML plus a summary of every
+JSON array the network sniff considered (its source URL, length, score, and
+sample keys) to `<out-dir>/debug/`, without requiring a match first.
+Compare that against what the site's DevTools Network tab actually shows,
+or search the saved HTML for `.ics` — most misses will be a key-name alias
+this script doesn't yet know about (add it to `NAME_KEYS`/`START_KEYS`/etc.
+at the top of the script), an `.ics` link this script's regex didn't catch,
+or a listing that needs a real interaction (pagination click, a filter)
+beyond the scroll this script already does.
 
 ## posh.vip: two separate problems, one fixed
 
