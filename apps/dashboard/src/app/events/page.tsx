@@ -1,8 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, events } from "@college-events/db";
-import { laneForEvent } from "@college-events/core";
+import { EVENT_CATEGORIES, laneForEvent } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
-import { approveEventAction, forceIncludeEventAction, rejectEventAction } from "@/lib/actions";
+import { approveEventAction, forceIncludeEventAction, rejectEventAction, updateEventCategoryAction } from "@/lib/actions";
+import { InlineCategorySelect } from "@/components/inline-category-select";
 
 /** Short label for the weekly post an event's category routes it to. */
 const LANE_LABEL: Record<string, string> = {
@@ -108,7 +109,13 @@ export default async function EventsPage({
                   </td>
                   <td>{new Date(e.startAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
                   <td>{e.venue ?? "—"}</td>
-                  <td>{e.category.replace("_", " ")}</td>
+                  <td>
+                    <InlineCategorySelect
+                      category={e.category}
+                      categories={EVENT_CATEGORIES}
+                      action={updateEventCategoryAction.bind(null, e.id)}
+                    />
+                  </td>
                   <td>
                     {(() => {
                       const lane = laneForEvent({

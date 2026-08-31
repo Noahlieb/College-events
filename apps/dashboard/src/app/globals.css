@@ -36,6 +36,8 @@ a:hover { text-decoration: underline; }
 .nav .brand { font-weight: 700; letter-spacing: 0.3px; margin-right: 12px; }
 .nav a { color: var(--muted); font-size: 13px; font-weight: 600; }
 .nav a.active, .nav a:hover { color: var(--text); }
+.school-switcher { margin-left: auto; }
+.school-switcher select { width: auto; padding: 5px 10px; font-size: 12px; }
 
 main.container {
   max-width: 1180px;

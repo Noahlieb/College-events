@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { eq, sql } from "drizzle-orm";
-import { db, events, eventSources, sources } from "@college-events/db";
+import { db, events, eventSources, schools, sources } from "@college-events/db";
 import type { EventCategory, SourceCategory, SourceType } from "@college-events/core";
+import { SCHOOL_COOKIE } from "./current-school";
 // Deep imports into each pipeline file rather than the @college-events/worker
 // barrel (`import { x } from "@college-events/worker"`) — the barrel's
 // index.ts does `export * from "./pipeline/render.js"` alongside everything
@@ -22,6 +24,21 @@ import { processSchoolRawContent } from "@college-events/worker/dist/pipeline/pr
 import { selectWeeklyPosts } from "@college-events/worker/dist/pipeline/select-posts.js";
 import { importCsvEvents } from "@college-events/worker/dist/pipeline/csv-import.js";
 import { getCurrentSchool } from "./current-school";
+
+// ── school selection ─────────────────────────────────────────────────
+
+export async function setCurrentSchoolAction(formData: FormData) {
+  const shortName = String(formData.get("school") || "");
+  // Validate against the DB rather than trusting the submitted value
+  // outright — a stale/tampered option value would otherwise get written
+  // straight into the cookie and surface later as a confusing
+  // "School not found" error instead of failing here, at the point of choice.
+  const [school] = await db.select().from(schools).where(eq(schools.shortName, shortName)).limit(1);
+  if (!school) return;
+  const cookieStore = await cookies();
+  cookieStore.set(SCHOOL_COOKIE, shortName, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
+  redirect("/");
+}
 
 // ── event actions ────────────────────────────────────────────────────
 
@@ -64,6 +81,20 @@ export async function updateEventAction(eventId: string, formData: FormData) {
   // Came from a post's "Edit text" button: go back there, where the change is
   // visible, instead of sitting on a form that looks untouched.
   if (postId) redirect(`/posts/${postId}`);
+}
+
+/** Inline category change from the Events table row, without opening the
+ * detail page. Category is the one lever that actually moves an event
+ * between weekly posts — laneForEvent() derives "Goes to" from category +
+ * timing alone, and assertLanePurity (packages/core/src/logic/lanes.ts)
+ * throws rather than let a mismatched event into a post, so there's no
+ * separate "lane" field to expose here for a more direct override. */
+export async function updateEventCategoryAction(eventId: string, formData: FormData) {
+  const category = String(formData.get("category") ?? "other") as EventCategory;
+  await db.update(events).set({ category, updatedAt: new Date() }).where(eq(events.id, eventId));
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath("/posts", "layout");
 }
 
 /** Merges a duplicate event into a primary one: re-points its raw source
