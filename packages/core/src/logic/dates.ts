@@ -69,6 +69,24 @@ export function parseEventDate(input: EventDateInput): ParsedEventDate {
 
 export class EventDateParseError extends Error {}
 
+/** The reverse of parseEventDate's date+time+timezone -> UTC combination:
+ * splits a UTC ISO instant into its local calendar date and 24h time in
+ * `timezone`. Used by importers that receive full ISO instants (e.g. a
+ * Campus Labs Engage CSV export's `starts_on`/`ends_on`) instead of an
+ * already-split date/time pair. Returns null for an unparseable instant
+ * rather than throwing, so a bad cell can be reported as a row-level
+ * import error instead of failing the whole batch. */
+export function toLocalDateAndTime(isoInstant: string, timezone: string): { date: string; time: string } | null {
+  const parsed = parseISO(isoInstant);
+  if (!isValid(parsed)) return null;
+  const zoned = toZonedTime(parsed, timezone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    date: `${zoned.getFullYear()}-${pad(zoned.getMonth() + 1)}-${pad(zoned.getDate())}`,
+    time: `${pad(zoned.getHours())}:${pad(zoned.getMinutes())}`,
+  };
+}
+
 /** An event is expired once its end (or start, if no end) is in the past. */
 export function isExpired(
   event: { startAt: string; endAt?: string | null },
