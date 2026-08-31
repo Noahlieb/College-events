@@ -323,29 +323,46 @@ export async function ingestAssetOffers(args: {
   return stored;
 }
 
-/** Best-effort image fetch — mirrors render.ts's fetchImageSafely (same
- * 4s bound). A dead/slow/hotlink-protected flyer URL must never fail the
- * event submission it's attached to. */
-async function fetchImageSafely(url: string): Promise<{ buffer: Buffer; contentType: string | null } | null> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    return buffer.length > 0 ? { buffer, contentType: res.headers.get("content-type") } : null;
-  } catch {
-    return null;
-  }
-}
-
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
   "image/gif": "gif",
 };
+
+/**
+ * Best-effort image fetch — mirrors render.ts's fetchImageSafely (same 4s
+ * bound). A dead/slow/hotlink-protected flyer URL must never fail the
+ * event submission it's attached to.
+ *
+ * A 200 OK is not proof the body is actually an image: a resize/CDN proxy
+ * (posh.vip's image_url routes through Cloudflare's cdn-cgi/image) can
+ * return an error page or an unrequested format with a perfectly healthy
+ * status code. Requesting one of the formats renderEventSlide's Sharp
+ * pipeline definitely handles, then checking the response actually claims
+ * to be one of them, is what stops that from being stored and only
+ * surfacing as a crash later when something tries to decode it (see
+ * packages/render's resolveBackgroundImage for the matching defense on
+ * the read side, for any bad image that gets in some other way).
+ */
+async function fetchImageSafely(url: string): Promise<{ buffer: Buffer; contentType: string | null } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: Object.keys(IMAGE_MIME_EXTENSIONS).join(",") },
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !(contentType.split(";")[0]!.trim() in IMAGE_MIME_EXTENSIONS)) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return buffer.length > 0 ? { buffer, contentType } : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Downloads a manual/CSV submission's flyer URL and re-hosts it as a proper
