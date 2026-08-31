@@ -1,9 +1,11 @@
 # Scrapers
 
-Two Python scrapers that feed College-events, each covering multiple schools
-via its own config file (`engage_schools.json`, `schools.json`). Both write a
-`college_events_import_*.csv` in the exact shape `apps/worker`'s
-`import-csv` command expects (see `packages/ingestion/src/csv-events.ts`).
+Python scrapers that feed College-events. The two vendor-specific ones each
+cover multiple schools via their own config file (`engage_schools.json`,
+`schools.json`); the third, `scrape_generic.py`, takes any one-off URL
+instead. All three write a `college_events_import_*.csv` in the exact shape
+`apps/worker`'s `import-csv` command expects (see
+`packages/ingestion/src/csv-events.ts`).
 
 They live here rather than in a separate repo so the daily GitHub Actions
 workflow (`.github/workflows/daily.yml`) can run them on a schedule — when
@@ -14,6 +16,7 @@ being awake.
 |---|---|---|---|
 | `scrape_owlcentral.py` | Campus Labs Engage JSON API (any school on the platform — FAU calls theirs "Owl Central") | No — stdlib HTTP | Yes |
 | `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
+| `scrape_generic.py` | Any other school's events page — no vendor-specific code, see below | **Yes** — Playwright/Chromium | Untested — see below |
 
 ## Campus Labs Engage: adding a school
 
@@ -41,6 +44,50 @@ of files: `owlcentral_events_<school>.csv` (raw) and
 `college_events_import_<school>_owlcentral.csv` (College-events-ready).
 Pass `--school NAME` to scrape just one, or `--subdomain xyz` for a one-off
 ad-hoc scrape that bypasses the config entirely.
+
+## scrape_generic.py: schools not on Campus Labs Engage or posh.vip
+
+Some schools run neither of the above — a different platform entirely (e.g.
+CampusGroups, Presence, a homegrown calendar). Rather than hardcoding a
+third vendor's API, `scrape_generic.py` takes any one events-page URL and
+tries two vendor-agnostic strategies, using whichever actually finds events:
+
+1. **Network sniffing.** It loads the page in a real (Playwright) browser
+   and inspects every XHR/fetch response for JSON, scoring each array it
+   finds for how many items look event-shaped (a name-like key *and* a
+   date-like key, checking common aliases and one level of JSON:API-style
+   `attributes`/`data`/`fields`/`node` wrapping). This is the same thing a
+   human does by opening DevTools' Network tab and finding the request that
+   returns the event list — automated, and it will pick up whatever
+   internal API the site actually uses without that API needing to be
+   named anywhere in this repo.
+2. **schema.org JSON-LD.** It also parses any `<script type="application/
+   ld+json">` blocks with `"@type": "Event"` out of the rendered page —
+   the same structured-data format `scrape_posh.py` already trusts for
+   posh.vip's own event detail pages. Many sites emit this for SEO
+   regardless of how the page itself renders.
+
+```bash
+python scrapers/scrape_generic.py --url https://bullsconnect.usf.edu/events --school USF --out-dir /tmp/scrape
+```
+
+Writes `generic_events_<school>.csv` (raw) and
+`college_events_import_<school>_generic.csv` (College-events-ready), same
+naming pattern as the other two scrapers. `Category` is always `"other"` —
+unlike Engage, there's no shared theme taxonomy to map from.
+
+**This is unverified against any real site** — it was built and unit-tested
+against synthetic HTML/JSON shaped like common event-API responses, not
+against a live page, since this environment's network access doesn't reach
+arbitrary school sites. If it finds 0 events on the real thing, run with
+`--diagnose`: it saves the rendered HTML plus a summary of every JSON array
+the network sniff considered (its source URL, length, score, and sample
+keys) to `<out-dir>/debug/`, without requiring a match first. Compare that
+against what the site's DevTools Network tab actually shows — most misses
+will be a key-name alias this script doesn't yet know about (add it to
+`NAME_KEYS`/`START_KEYS`/etc. at the top of the script) or a listing that
+needs a real interaction (pagination click, a filter) beyond the scroll
+this script already does.
 
 ## posh.vip: two separate problems, one fixed
 
