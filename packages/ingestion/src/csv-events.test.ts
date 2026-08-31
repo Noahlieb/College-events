@@ -45,6 +45,22 @@ describe("parseEventsCsv", () => {
     expect(rows[0]!.input.category).toBe("concert");
   });
 
+  it("does not let 'concert' in the Notes reclassify a nightlife event as campus", () => {
+    // Regression: resolveCategory's "prefer a stronger Notes signal" override
+    // used to trust *any* non-"other" guess once "concert" appeared anywhere
+    // in the Notes text. categorizeEvent ranks "campus" ahead of "concert",
+    // so Notes mentioning both ("Live DJ concert at the Student Union") took
+    // the campus guess instead -- silently moving a nightlife event into
+    // Monday's post instead of Thursday's.
+    const { rows } = parseEventsCsv(
+      csv(
+        '2026-08-27,Thu,9:00 PM,Nightlife,Homecoming Bash,Culture Room,"Culture Room, Fort Lauderdale","Live DJ concert at the Student Union",,,https://www.cultureroom.net/',
+      ),
+      { defaultCity: "Boca Raton", submittedBy: "test" },
+    );
+    expect(rows[0]!.input.category).toBe("nightlife");
+  });
+
   it("falls back to the Nightlife bucket when Notes gives no stronger signal", () => {
     const { rows } = parseEventsCsv(
       csv('2026-08-27,Thu,9:00 PM,Nightlife,Thirsty Thursdays (21+),Tin Roof,Fort Lauderdale,Recurring weekly,,,https://www.visitlauderdale.com/nightlife/'),

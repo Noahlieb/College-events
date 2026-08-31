@@ -41,7 +41,13 @@ function resolveCategory(rawCategory: string, name: string, notes: string): Even
   // "Concert" in the Notes column is a stronger, more specific signal than
   // a broad CSV bucket like "Nightlife" — prefer it when present.
   const { category: guessed } = categorizeEvent({ name, description: notes });
-  if (guessed !== "other" && /concert|festival stage/i.test(notes)) return guessed;
+  // Only takes the override when the guess actually IS "concert" -- not just
+  // non-"other" -- because categorizeEvent ranks campus/sports ahead of
+  // concert in its priority list. Notes mentioning "concert" alongside an
+  // unrelated campus/sports keyword (e.g. "tailgate concert on campus") would
+  // otherwise silently reclassify a real nightlife event as campus, routing
+  // it into Monday's post instead of Thursday's.
+  if (guessed === "concert" && /concert|festival stage/i.test(notes)) return guessed;
   if (direct) return direct;
   if (guessed !== "other") return guessed;
   return (EVENT_CATEGORIES as readonly string[]).includes(rawCategory.trim().toLowerCase() as EventCategory)
