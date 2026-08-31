@@ -16,7 +16,39 @@ being awake.
 |---|---|---|---|
 | `scrape_owlcentral.py` | Campus Labs Engage JSON API (any school on the platform — FAU calls theirs "Owl Central") | No — stdlib HTTP | Yes |
 | `scrape_posh.py` | posh.vip nightlife listings | **Yes** — Playwright/Chromium; listings render client-side | **No — blocked, see below** |
-| `scrape_generic.py` | Any other school's events page — no vendor-specific code, see below | **Yes** — Playwright/Chromium | Untested — see below |
+| `scrape_generic.py` | Any other school's events page — no vendor-specific code, see below | Only if there's no `.ics` feed to find (see below) | Untested — see below |
+| `scrape_all.py` | Runs the above across every configured school in one command | Same as whichever of the above it invokes | — |
+
+## scrape_all.py: every school, one command
+
+```bash
+python scrapers/scrape_all.py --out-dir /tmp/scrape --days-ahead 7
+```
+
+Loops every school in `engage_schools.json` through `scrape_owlcentral.py`
+and every school in `generic_schools.json` (below) through
+`scrape_generic.py`, writing each school's usual CSV pair exactly as
+running that script directly for that school would, plus one extra
+`all_schools_events.csv` merging every school and platform into a single
+overview (school, platform, name, organization, times, location,
+description, url, image_url) — handy for eyeballing everything at once.
+It does **not** replace the per-school `college_events_import_*.csv`
+files for actually importing: `pnpm worker import-csv` still takes one
+school at a time (see "Running locally" below), since each import call is
+what tells the importer which school the rows belong to.
+
+`generic_schools.json` is `scrape_generic.py`'s per-school config, same
+shape as the other two:
+
+```json
+[{ "school": "USF", "url": "https://bullsconnect.usf.edu/ical/usf/ical_usf.ics" }]
+```
+
+`url` can be a direct `.ics` feed (fastest — no browser) or a regular
+events page for `scrape_generic.py` to run its full detection against.
+Adding a school to the all-schools run means adding it to whichever of
+`engage_schools.json` / `generic_schools.json` actually fits its platform
+— `scrape_all.py` itself has no per-school knowledge of its own.
 
 ## Campus Labs Engage: adding a school
 
