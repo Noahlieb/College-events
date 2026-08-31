@@ -104,6 +104,11 @@ def run_generic_schools(config_path: Path, days_ahead: int, out_dir: Path) -> li
         if not events:
             continue
 
+        missing_before = sum(1 for e in events if not e.get("image_url"))
+        if missing_before:
+            filled = generic.backfill_missing_images(events, url)
+            print(f"  image backfill: filled {filled}/{missing_before} missing image_url(s) via each event's own page", file=sys.stderr)
+
         raw_path = out_dir / f"generic_events_{school_lower}.csv"
         raw_count = generic.save_raw_csv(events, raw_path)
         print(f"  saved {raw_count} events to {raw_path}", file=sys.stderr)
