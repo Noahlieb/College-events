@@ -47,7 +47,7 @@ import ssl
 import sys
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -501,6 +501,28 @@ def _dedupe_key(row: dict) -> tuple:
     return (row.get("name", "").strip().lower(), str(row.get("starts_on")), row.get("url", ""))
 
 
+def filter_by_window(events: list[dict], days_ahead: int) -> tuple[list[dict], int]:
+    """Keeps only events starting within the next `days_ahead` days.
+
+    A subscribe-to-calendar .ics feed (unlike Engage's own discovery API,
+    which scrape_owlcentral.py already bounds with an endsAfter/startsBefore
+    query) has no date range of its own -- it's typically the whole
+    semester or year, past events included. Without this, USF's feed alone
+    returned 4,654 events for one school. Returns (kept, dropped_count);
+    an event with no parseable start date is dropped too, since there's no
+    way to know if it's in the window."""
+    if days_ahead <= 0:
+        return events, 0
+    now = datetime.now(timezone.utc)
+    until = now + timedelta(days=days_ahead)
+    kept = []
+    for row in events:
+        dt = parse_when(row.get("starts_on"))
+        if dt and now <= dt.astimezone(timezone.utc) <= until:
+            kept.append(row)
+    return kept, len(events) - len(kept)
+
+
 def _save_diagnostics(debug_dir: Path, label: str, html: str, captured: list[tuple[str, object]]) -> None:
     debug_dir.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "page"
@@ -639,6 +661,9 @@ def main() -> None:
     parser.add_argument("--out-dir", default=str(Path(__file__).parent), help="directory for output CSVs")
     parser.add_argument("--headed", action="store_true", help="show the browser window (debugging)")
     parser.add_argument("--scroll-steps", type=int, default=SCROLL_STEPS, help="how many scroll attempts to trigger lazy-loaded listings")
+    parser.add_argument("--days-ahead", type=int, default=60,
+                         help="only keep events starting within N days from now (default: 60; 0 disables filtering -- "
+                         "a raw .ics feed has no date range of its own and can include years of past events)")
     parser.add_argument(
         "--diagnose",
         action="store_true",
@@ -663,6 +688,10 @@ def main() -> None:
         events = scrape_url(args.url, headless=headless, scroll_steps=args.scroll_steps,
                              debug_dir=debug_dir, debug_label=school_lower)
     print(f"  found {len(events)} event(s) total.", file=sys.stderr)
+
+    events, dropped = filter_by_window(events, args.days_ahead)
+    if args.days_ahead > 0:
+        print(f"  kept {len(events)} within the next {args.days_ahead}d ({dropped} outside the window or undated)", file=sys.stderr)
 
     if not events:
         print(

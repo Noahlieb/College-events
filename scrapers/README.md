@@ -91,6 +91,13 @@ Writes `generic_events_<school>.csv` (raw) and
 naming pattern as the other two scrapers. `Category` is always `"other"` —
 unlike Engage, there's no shared theme taxonomy to map from.
 
+Results are filtered to `--days-ahead` (default 60), same as
+`scrape_owlcentral.py`. This matters more here than there: an `.ics`
+"subscribe to calendar" feed has no date range of its own — USF's alone
+came back with 4,654 events, the whole semester's worth including ones
+already past, until this filter was added. Pass `--days-ahead 0` to keep
+everything unfiltered.
+
 **Verified with unit tests against synthetic data, not a live site** — this
 environment's network access doesn't reach arbitrary school domains, so
 each strategy (`.ics` discovery/parsing, JSON:API-shaped network responses,
