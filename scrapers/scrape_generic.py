@@ -45,9 +45,9 @@ import json
 import re
 import ssl
 import sys
-import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -377,29 +377,58 @@ def fetch_page_image(url: str, timeout: int = 15) -> str | None:
     return _extract_og_image(html)
 
 
-def backfill_missing_images(events: list[dict], source_url: str, delay: float = 0.15) -> int:
+def backfill_missing_images(events: list[dict], source_url: str, max_workers: int = 8, timeout: int = 10) -> int:
     """Fetches each event's own page to fill in image_url where a source
     (an .ics feed, especially -- RFC 5545 has no image field at all)
     supplied none. Skips anything that isn't really a per-event link:
     `source_url` itself (map_ics_event falls back to the feed URL when a
     VEVENT has no URL of its own -- fetching that would just find the
     feed's own page, if any, misattributed to every event that hit the
-    fallback) and any other `.ics` URL. Caches by URL so events that
-    share one link -- including that fallback case -- are only fetched
-    once rather than once per event."""
-    cache: dict[str, str | None] = {}
-    filled = 0
+    fallback) and any other `.ics` URL.
+
+    Runs fetches concurrently -- a school-wide feed can carry hundreds of
+    events, and fetching one page at a time (even with a fast per-request
+    timeout) turns into minutes of visible dead time for what looks like a
+    hang. Dedupes to the unique URLs first, so events sharing one link
+    (including the fallback case) are only fetched once regardless of how
+    many rows point to it."""
+    to_fetch = []
+    seen_urls = set()
     for row in events:
         if row.get("image_url"):
             continue
         url = row.get("url")
         if not url or url == source_url or url.lower().split("?")[0].endswith(".ics"):
             continue
-        if url not in cache:
-            cache[url] = fetch_page_image(url)
-            time.sleep(delay)
-        if cache[url]:
-            row["image_url"] = cache[url]
+        if url not in seen_urls:
+            seen_urls.add(url)
+            to_fetch.append(url)
+
+    if not to_fetch:
+        return 0
+
+    print(f"  image backfill: fetching {len(to_fetch)} unique event page(s) ({max_workers} at a time) ...", file=sys.stderr)
+    cache: dict[str, str | None] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(fetch_page_image, url, timeout): url for url in to_fetch}
+        for future in as_completed(futures):
+            url = futures[future]
+            try:
+                cache[url] = future.result()
+            except Exception:
+                cache[url] = None
+            done += 1
+            if done % 25 == 0 or done == len(to_fetch):
+                print(f"    ...{done}/{len(to_fetch)} page(s) checked", file=sys.stderr)
+
+    filled = 0
+    for row in events:
+        if row.get("image_url"):
+            continue
+        image = cache.get(row.get("url"))
+        if image:
+            row["image_url"] = image
             filled += 1
     return filled
 
