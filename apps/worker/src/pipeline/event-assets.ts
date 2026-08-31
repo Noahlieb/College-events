@@ -7,6 +7,7 @@ import {
   type AssetClassification,
 } from "@college-events/core";
 import type { AssetCandidate } from "@college-events/ingestion";
+import { assetPath, contentAddressedPath, saveAsset } from "../lib/storage.js";
 
 /**
  * Flyer selection for a canonical event, across every source that reported
@@ -320,6 +321,91 @@ export async function ingestAssetOffers(args: {
   }
 
   return stored;
+}
+
+/** Best-effort image fetch — mirrors render.ts's fetchImageSafely (same
+ * 4s bound). A dead/slow/hotlink-protected flyer URL must never fail the
+ * event submission it's attached to. */
+async function fetchImageSafely(url: string): Promise<{ buffer: Buffer; contentType: string | null } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return buffer.length > 0 ? { buffer, contentType: res.headers.get("content-type") } : null;
+  } catch {
+    return null;
+  }
+}
+
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+/**
+ * Downloads a manual/CSV submission's flyer URL and re-hosts it as a proper
+ * asset candidate, instead of leaving events.source_image pointing straight
+ * at the external link the way this path always has. That distinction
+ * matters most for scraped URLs — a posh.vip-style export's image_url is
+ * typically an Instagram CDN link, which is routinely hotlink-protected or
+ * short-lived, so storing only the link means a dashboard thumbnail that
+ * goes broken the moment it expires, and a render-time fetch gambling on
+ * the same link staying reachable indefinitely. Every other event-creation
+ * path in this system (adapters, the AI pipeline) already goes through
+ * assetCandidates; this closes the one gap where manual/CSV submissions
+ * didn't.
+ *
+ * Best-effort and silent on failure, same contract as fetchImageSafely: a
+ * dead link at submission time just leaves the event on the legacy
+ * sourceImage fallback exactly as before — it must never fail the
+ * submission itself.
+ */
+export async function attachFlyerFromUrl(args: {
+  schoolId: string;
+  eventId: string;
+  sourceId: string;
+  flyerUrl: string;
+  schoolShortName: string;
+}): Promise<void> {
+  try {
+    const fetched = await fetchImageSafely(args.flyerUrl);
+    if (!fetched) return;
+
+    const extension = IMAGE_MIME_EXTENSIONS[fetched.contentType ?? ""] ?? "jpg";
+    const path = contentAddressedPath(
+      assetPath(args.schoolShortName.toLowerCase(), "events", args.eventId, `flyer.${extension}`),
+      fetched.buffer,
+    );
+    const storageUrl = await saveAsset(path, fetched.buffer);
+
+    await db
+      .insert(assetCandidates)
+      .values({
+        schoolId: args.schoolId,
+        eventId: args.eventId,
+        sourceId: args.sourceId,
+        rawContentId: null,
+        sourceUrl: args.flyerUrl,
+        storageUrl,
+        mime: fetched.contentType,
+        classification: "flyer",
+        isOfficial: true,
+        isAiGenerated: false,
+        confidence: 1,
+        origin: "manual_submission",
+      })
+      .onConflictDoNothing({ target: [assetCandidates.eventId, assetCandidates.sourceUrl] });
+
+    await refreshCanonicalAsset(args.eventId);
+  } catch {
+    // See doc comment above — never let a storage/network hiccup here fail
+    // the event submission that triggered it.
+  }
 }
 
 /**

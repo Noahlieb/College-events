@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt } from "drizzle-orm";
-import { db, events } from "@college-events/db";
+import { assetCandidates, db, events } from "@college-events/db";
 import { laneForEvent, localDateRangeToUtc } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
 import { EventsTable, type EventRow } from "@/components/EventsTable";
@@ -33,13 +33,21 @@ export default async function EventsPage({
   if (fromDate) filters.push(gte(events.startAt, fromDate));
   if (toDate) filters.push(lt(events.startAt, toDate));
 
+  // canonicalAsset's storageUrl (our own re-hosted copy) is preferred over
+  // the legacy events.source_image below — that column is whatever raw
+  // external URL a source or CSV happened to report, which for a scraped
+  // Instagram CDN link is routinely hotlink-protected or expired by the
+  // time anyone views this table. See attachFlyerFromUrl in
+  // apps/worker/src/pipeline/event-assets.ts for where the re-hosted copy
+  // comes from.
   const rows = await db
-    .select()
+    .select({ event: events, canonicalStorageUrl: assetCandidates.storageUrl })
     .from(events)
+    .leftJoin(assetCandidates, eq(events.canonicalAssetId, assetCandidates.id))
     .where(and(...filters))
     .orderBy(desc(events.startAt));
 
-  const tableRows: EventRow[] = rows.map((e) => {
+  const tableRows: EventRow[] = rows.map(({ event: e, canonicalStorageUrl }) => {
     const lane = laneForEvent({
       category: e.category,
       startAt: e.startAt.toISOString(),
@@ -58,7 +66,7 @@ export default async function EventsPage({
       verificationStatus: e.verificationStatus,
       status: e.status,
       sourceName: e.sourceName,
-      sourceImage: e.sourceImage,
+      sourceImage: canonicalStorageUrl ?? e.sourceImage,
       flags: e.flags,
     };
   });

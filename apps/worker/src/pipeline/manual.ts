@@ -6,6 +6,7 @@ import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles } from "../lib/geo-heuristic.js";
 import { log } from "../lib/log.js";
 import { shortenDescriptionIfNeeded } from "../lib/summarize.js";
+import { attachFlyerFromUrl } from "./event-assets.js";
 
 /**
  * Manual event entry (spec §33). Reuses the exact same raw_content shape,
@@ -174,6 +175,20 @@ export async function submitManualEvent(
 
   await db.insert(eventSources).values({ eventId: event.id, rawContentId: raw.id, sourceId: manualSourceId, sourceUrl: input.sourceUrl });
   await log(schoolId, "info", "manual_entry", `Manual submission created event ${event.id}`, { rawContentId: raw.id });
+
+  // Re-hosts the flyer into our own storage instead of leaving sourceImage
+  // pointing straight at the external link — see attachFlyerFromUrl's doc
+  // comment for why that matters for CSV-scraped URLs specifically. Fully
+  // best-effort on its own; nothing here needs to wait on or react to it.
+  if (input.flyerUrl) {
+    await attachFlyerFromUrl({
+      schoolId,
+      eventId: event.id,
+      sourceId: manualSourceId,
+      flyerUrl: input.flyerUrl,
+      schoolShortName: school.shortName,
+    });
+  }
 
   return { eventId: event.id, merged: false };
 }
