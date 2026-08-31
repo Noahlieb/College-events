@@ -145,6 +145,9 @@ export default async function ImportPage({
       <div className="panel">
         <div className="panel-header">
           <h2>Upload a CSV</h2>
+          <span className="badge badge-blue" title="Rows with no University column value land here — switch schools in the nav above first if this isn't right">
+            importing into {school.shortName}
+          </span>
         </div>
         <ImportCsvForm manualSources={manualSources} />
       </div>
