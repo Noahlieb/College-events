@@ -28,6 +28,22 @@ describe("categorizeEvent", () => {
     expect(tags).toContain("party");
   });
 
+  it("classifies a nightlife afterparty that merely mentions 'the game' as nightlife, not sports", () => {
+    const { category } = categorizeEvent({
+      name: "Post-Game Bash @ Kemistry Nightclub",
+      description: "DJ sets and bottle service all night — come celebrate the game with us!",
+    });
+    expect(category).toBe("nightlife");
+  });
+
+  it("still classifies a real game as sports even though it mentions a party", () => {
+    const { category } = categorizeEvent({
+      name: "FAU Owls Football vs. Georgia Southern",
+      description: "Tailgate starts at 4pm, kickoff at 7pm — after-party details to come",
+    });
+    expect(category).toBe("sports");
+  });
+
   it("falls back to 'other' when nothing matches", () => {
     const { category } = categorizeEvent({ name: "Untitled listing", description: "" });
     expect(category).toBe("other");
