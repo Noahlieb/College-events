@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <a href="/posts">Weekly Posts</a>
           <a href="/sources">Sources</a>
           <a href="/import">Import CSV</a>
+          <a href="/links">Links &amp; QR Codes</a>
         </nav>
         <main className="container">{children}</main>
       </body>

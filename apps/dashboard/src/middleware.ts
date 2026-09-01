@@ -33,5 +33,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // /r/* is the public QR-code / short-link redirect target (see
+  // app/r/[slug]/route.ts) — whoever scans the code has no dashboard
+  // credentials, so it must stay outside the auth gate.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|r/).*)"],
 };

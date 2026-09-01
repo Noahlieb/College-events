@@ -8,6 +8,13 @@
       "when": 1786923777586,
       "tag": "0000_busy_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788264471106,
+      "tag": "0001_lean_sue_storm",
+      "breakpoints": true
     }
   ]
 }

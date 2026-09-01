@@ -221,6 +221,28 @@ export const renderedAssets = pgTable("rendered_assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── dynamic QR / short links (standalone — not scoped to a school or event) ──
+export const qrCodes = pgTable("qr_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  label: text("label").notNull(),
+  destinationUrl: text("destination_url").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const qrCodeClicks = pgTable("qr_code_clicks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  qrCodeId: uuid("qr_code_id")
+    .notNull()
+    .references(() => qrCodes.id, { onDelete: "cascade" }),
+  clickedAt: timestamp("clicked_at", { withTimezone: true }).notNull().defaultNow(),
+  referrer: text("referrer"),
+  userAgent: text("user_agent"),
+  ipHash: text("ip_hash"),
+});
+
 export const processingLogs = pgTable("processing_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
   schoolId: uuid("school_id").references(() => schools.id, { onDelete: "cascade" }),
