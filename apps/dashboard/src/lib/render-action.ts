@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { db, postEvents, posts } from "@college-events/db";
 import { getCurrentSchool } from "./current-school";
 // Deep import, not the @college-events/worker barrel — see the comment
 // below on why this whole file stays isolated from anything sharp-adjacent.
@@ -84,6 +86,57 @@ export async function buildWeeklyPostsAction(): Promise<BuildWeeklyPostsResult> 
       postType: s.postType,
       scheduledDate: s.scheduledDate,
       eventCount: s.eventCount,
+    })),
+    rendered,
+  };
+}
+
+/**
+ * The selective counterpart to buildWeeklyPostsAction: still refreshes
+ * event assignments for every lane/week (selectWeeklyPosts is a cheap,
+ * DB-only pass with its own idempotency and locked-post protections — no
+ * reason to skip it for posts not in this render batch), but only spends
+ * the slow, external render-service call on the posts explicitly chosen.
+ * That's the part actually worth not repeating on every click — assembling
+ * event lists costs a handful of DB round trips; rendering costs an HTTP
+ * call per post and is where a bad image or a cold render-service instance
+ * shows up.
+ *
+ * Looked up directly from `posts` rather than filtered out of
+ * selectWeeklyPosts's own return value, since that only covers the
+ * current + a few weeks ahead — a chosen post further in the past or
+ * future (re-rendering an old one after an edit, say) would otherwise be
+ * silently dropped even though it was explicitly requested.
+ */
+export async function buildSelectedPostsAction(postIds: string[]): Promise<BuildWeeklyPostsResult> {
+  const school = await getCurrentSchool();
+  await selectWeeklyPosts(school.id);
+
+  const targets =
+    postIds.length > 0
+      ? await db
+          .select({ post: posts, eventCount: sql<number>`count(${postEvents.eventId})::int` })
+          .from(posts)
+          .leftJoin(postEvents, eq(postEvents.postId, posts.id))
+          .where(and(eq(posts.schoolId, school.id), inArray(posts.id, postIds)))
+          .groupBy(posts.id)
+      : [];
+
+  const rendered: BuildWeeklyPostsResult["rendered"] = [];
+  for (const { post } of targets) {
+    const result = await callRenderService(post.id);
+    rendered.push(result.ok ? { postId: post.id, ok: true } : { postId: post.id, ok: false, error: result.error });
+  }
+
+  revalidatePath("/posts");
+  revalidatePath("/");
+
+  return {
+    selected: targets.map(({ post, eventCount }) => ({
+      postId: post.id,
+      postType: post.postType,
+      scheduledDate: post.scheduledDate,
+      eventCount,
     })),
     rendered,
   };
