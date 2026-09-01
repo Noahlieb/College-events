@@ -14,11 +14,19 @@ import { log } from "../lib/log.js";
 import { mondayOfWeek } from "../lib/week.js";
 import { formatCaptionDayLabel, formatCaptionTimeRange, formatInstagramHandle, formatWeekRangeSentence } from "../lib/format.js";
 
-// 19 events + 1 cover slide = 20 total, the maximum Instagram allows in a
-// single carousel post. That platform limit, not this codebase, is the
-// real ceiling here — raising this further would build a post the render
-// pipeline is happy with but Instagram itself would reject on publish.
-const MAX_SLIDES_PER_POST = 19;
+// Uncapped by request — this app no longer stops a post at any event
+// count of its own. Nothing downstream (rendering, the dashboard preview,
+// the carousel data model) assumes a bound either; see
+// INSTAGRAM_CAROUSEL_LIMIT below for the one limit that still exists, and
+// why it's surfaced as a warning rather than enforced here.
+const MAX_SLIDES_PER_POST = Number.MAX_SAFE_INTEGER;
+
+// Instagram's own hard ceiling on a single carousel post (19 events + 1
+// cover = 20 total) — a platform constraint, not something this codebase
+// can lift. A post built past this can't actually be published as one
+// carousel; the dashboard surfaces a warning at this threshold (see
+// posts/page.tsx) instead of silently truncating or blocking the build.
+export const INSTAGRAM_CAROUSEL_LIMIT = 20;
 
 /**
  * Reads home/away back off an event's flags. Only the athletics feed knows

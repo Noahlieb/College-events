@@ -6,6 +6,12 @@ import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/a
 import { renderPostAction } from "@/lib/render-action";
 import { DownloadAllSlidesButton } from "@/components/DownloadSlidesButton";
 import { EditCaptionForm } from "@/components/EditCaptionForm";
+import { CarouselPreview } from "@/components/CarouselPreview";
+// Deep import, not the @college-events/worker barrel — select-posts.ts
+// never imports render.ts's sharp dependency, so this is safe in a
+// Next.js server component (same reasoning as every other deep import
+// in this app).
+import { INSTAGRAM_CAROUSEL_LIMIT } from "@college-events/worker/dist/pipeline/select-posts.js";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +51,18 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
         {post.schedulerId && <> · scheduler id: {post.schedulerId}</>}
       </p>
 
+      {linkedEvents.length + 1 > INSTAGRAM_CAROUSEL_LIMIT && (
+        <div className="panel" style={{ padding: 16, borderColor: "var(--amber)" }}>
+          <span className="badge badge-amber">TOO MANY SLIDES TO PUBLISH</span>
+          <p style={{ margin: "10px 0 0" }}>
+            This post has {linkedEvents.length} events + 1 cover = {linkedEvents.length + 1} slides, over Instagram's{" "}
+            {INSTAGRAM_CAROUSEL_LIMIT}-slide carousel limit. It'll build and render fine, but Instagram will reject it
+            as-is — remove events down to {INSTAGRAM_CAROUSEL_LIMIT - 1} or fewer, or split the extras into a second
+            post, before publishing.
+          </p>
+        </div>
+      )}
+
       <div className="panel">
         <div className="panel-header">
           <h2 style={{ margin: 0 }}>Carousel preview</h2>
@@ -64,30 +82,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
               <span className="ig-handle">{handle}</span>
             </div>
 
-            {assets.map((a, i) => (
-              <input
-                key={`r-${a.id}`}
-                type="radio"
-                name="slide"
-                id={`slide-${i}`}
-                className="slide-radio-hidden"
-                defaultChecked={i === 0}
-              />
-            ))}
-            <div className="ig-image-frame">
-              {assets.map((a) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={a.id} src={toDisplayUrl(a.storageUrl, a.id)} alt={a.template} className="slide-image" />
-              ))}
-            </div>
-            <div className="ig-thumbs">
-              {assets.map((a, i) => (
-                <label key={a.id} htmlFor={`slide-${i}`} className="thumb-label">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={toDisplayUrl(a.storageUrl, a.id)} alt={a.template} />
-                </label>
-              ))}
-            </div>
+            <CarouselPreview slides={assets.map((a) => ({ id: a.id, url: toDisplayUrl(a.storageUrl, a.id), alt: a.template }))} />
             <div style={{ display: "flex", gap: 10, padding: "8px 0 0", flexWrap: "wrap" }}>
               {assets.map((a, i) => (
                 <a key={a.id} href={`/api/assets/${a.id}/download`} className="btn btn-sm" style={{ fontSize: 11 }}>

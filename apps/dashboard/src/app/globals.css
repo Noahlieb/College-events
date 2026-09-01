@@ -169,58 +169,16 @@ form.inline { display: inline; }
   cursor: pointer;
   border-radius: 4px;
   border: 2px solid transparent;
+  background: transparent;
+  font: inherit;
   opacity: 0.55;
   overflow: hidden;
 }
 .thumb-label img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-label:hover { opacity: 0.85; }
-
-/* Wire each radio (by position) to its matching stage image + thumbnail highlight — CSS-only, no JS. */
-.slide-radio-hidden:nth-of-type(1):checked ~ .ig-image-frame .slide-image:nth-of-type(1),
-.slide-radio-hidden:nth-of-type(2):checked ~ .ig-image-frame .slide-image:nth-of-type(2),
-.slide-radio-hidden:nth-of-type(3):checked ~ .ig-image-frame .slide-image:nth-of-type(3),
-.slide-radio-hidden:nth-of-type(4):checked ~ .ig-image-frame .slide-image:nth-of-type(4),
-.slide-radio-hidden:nth-of-type(5):checked ~ .ig-image-frame .slide-image:nth-of-type(5),
-.slide-radio-hidden:nth-of-type(6):checked ~ .ig-image-frame .slide-image:nth-of-type(6),
-.slide-radio-hidden:nth-of-type(7):checked ~ .ig-image-frame .slide-image:nth-of-type(7),
-.slide-radio-hidden:nth-of-type(8):checked ~ .ig-image-frame .slide-image:nth-of-type(8),
-.slide-radio-hidden:nth-of-type(9):checked ~ .ig-image-frame .slide-image:nth-of-type(9),
-.slide-radio-hidden:nth-of-type(10):checked ~ .ig-image-frame .slide-image:nth-of-type(10),
-.slide-radio-hidden:nth-of-type(11):checked ~ .ig-image-frame .slide-image:nth-of-type(11),
-.slide-radio-hidden:nth-of-type(12):checked ~ .ig-image-frame .slide-image:nth-of-type(12),
-.slide-radio-hidden:nth-of-type(13):checked ~ .ig-image-frame .slide-image:nth-of-type(13),
-.slide-radio-hidden:nth-of-type(14):checked ~ .ig-image-frame .slide-image:nth-of-type(14),
-.slide-radio-hidden:nth-of-type(15):checked ~ .ig-image-frame .slide-image:nth-of-type(15),
-.slide-radio-hidden:nth-of-type(16):checked ~ .ig-image-frame .slide-image:nth-of-type(16),
-.slide-radio-hidden:nth-of-type(17):checked ~ .ig-image-frame .slide-image:nth-of-type(17),
-.slide-radio-hidden:nth-of-type(18):checked ~ .ig-image-frame .slide-image:nth-of-type(18),
-.slide-radio-hidden:nth-of-type(19):checked ~ .ig-image-frame .slide-image:nth-of-type(19),
-.slide-radio-hidden:nth-of-type(20):checked ~ .ig-image-frame .slide-image:nth-of-type(20) {
-  display: block;
-}
-.slide-radio-hidden:nth-of-type(1):checked ~ .ig-thumbs .thumb-label:nth-of-type(1),
-.slide-radio-hidden:nth-of-type(2):checked ~ .ig-thumbs .thumb-label:nth-of-type(2),
-.slide-radio-hidden:nth-of-type(3):checked ~ .ig-thumbs .thumb-label:nth-of-type(3),
-.slide-radio-hidden:nth-of-type(4):checked ~ .ig-thumbs .thumb-label:nth-of-type(4),
-.slide-radio-hidden:nth-of-type(5):checked ~ .ig-thumbs .thumb-label:nth-of-type(5),
-.slide-radio-hidden:nth-of-type(6):checked ~ .ig-thumbs .thumb-label:nth-of-type(6),
-.slide-radio-hidden:nth-of-type(7):checked ~ .ig-thumbs .thumb-label:nth-of-type(7),
-.slide-radio-hidden:nth-of-type(8):checked ~ .ig-thumbs .thumb-label:nth-of-type(8),
-.slide-radio-hidden:nth-of-type(9):checked ~ .ig-thumbs .thumb-label:nth-of-type(9),
-.slide-radio-hidden:nth-of-type(10):checked ~ .ig-thumbs .thumb-label:nth-of-type(10),
-.slide-radio-hidden:nth-of-type(11):checked ~ .ig-thumbs .thumb-label:nth-of-type(11),
-.slide-radio-hidden:nth-of-type(12):checked ~ .ig-thumbs .thumb-label:nth-of-type(12),
-.slide-radio-hidden:nth-of-type(13):checked ~ .ig-thumbs .thumb-label:nth-of-type(13),
-.slide-radio-hidden:nth-of-type(14):checked ~ .ig-thumbs .thumb-label:nth-of-type(14),
-.slide-radio-hidden:nth-of-type(15):checked ~ .ig-thumbs .thumb-label:nth-of-type(15),
-.slide-radio-hidden:nth-of-type(16):checked ~ .ig-thumbs .thumb-label:nth-of-type(16),
-.slide-radio-hidden:nth-of-type(17):checked ~ .ig-thumbs .thumb-label:nth-of-type(17),
-.slide-radio-hidden:nth-of-type(18):checked ~ .ig-thumbs .thumb-label:nth-of-type(18),
-.slide-radio-hidden:nth-of-type(19):checked ~ .ig-thumbs .thumb-label:nth-of-type(19),
-.slide-radio-hidden:nth-of-type(20):checked ~ .ig-thumbs .thumb-label:nth-of-type(20) {
-  border-color: var(--accent);
-  opacity: 1;
-}
+/* Active-slide highlight is CarouselPreview's own inline style now, not a
+   `:checked` sibling selector — a fixed set of `:nth-of-type` rules can't
+   scale to an unbounded slide count. */
 
 .caption-box summary {
   padding: 12px 16px;
