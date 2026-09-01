@@ -10,6 +10,29 @@ import { updateCaptionAction } from "@/lib/actions";
  * on demand, saved through the same silent-failure-safe pending/error
  * pattern as every other action button in this app (see ImportCsvForm).
  */
+/** Copies `text` to the clipboard and flips to a "Copied!" label for 2s so
+ * the click has visible confirmation instead of appearing to do nothing. */
+function CopyCaptionButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can be unavailable (insecure context, permissions) —
+      // silently no-op rather than showing an error for a copy button.
+    }
+  };
+
+  return (
+    <button className="btn btn-sm" type="button" onClick={copy} disabled={!text}>
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
 export function EditCaptionForm({ postId, caption }: { postId: string; caption: string }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(caption);
@@ -20,9 +43,12 @@ export function EditCaptionForm({ postId, caption }: { postId: string; caption: 
     return (
       <div>
         <pre>{caption || "(no caption generated yet)"}</pre>
-        <button className="btn btn-sm" type="button" onClick={() => setEditing(true)}>
-          Edit caption
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-sm" type="button" onClick={() => setEditing(true)}>
+            Edit caption
+          </button>
+          <CopyCaptionButton text={caption} />
+        </div>
       </div>
     );
   }
@@ -65,6 +91,7 @@ export function EditCaptionForm({ postId, caption }: { postId: string; caption: 
         >
           Cancel
         </button>
+        <CopyCaptionButton text={value} />
         {error && <div style={{ fontSize: 12, color: "var(--red, #e5484d)" }}>{error}</div>}
       </div>
     </div>
