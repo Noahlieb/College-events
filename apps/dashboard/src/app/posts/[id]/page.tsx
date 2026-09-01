@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db, events, postEvents, posts, renderedAssets, schools } from "@college-events/db";
 import { notFound } from "next/navigation";
 import { toDisplayUrl } from "@/lib/media";
-import { approvePostAction, rejectPostAction, schedulePostAction } from "@/lib/actions";
+import { approvePostAction, rejectPostAction, removeEventFromPostAction, schedulePostAction } from "@/lib/actions";
 import { renderPostAction } from "@/lib/render-action";
 import { DownloadAllSlidesButton } from "@/components/DownloadSlidesButton";
 import { EditCaptionForm } from "@/components/EditCaptionForm";
@@ -118,9 +118,20 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
                   <td>{event.name}</td>
                   <td style={{ fontSize: 12, color: "var(--muted)" }}>{new Date(event.startAt).toLocaleDateString()}</td>
                   <td style={{ textAlign: "right" }}>
-                    <a href={`/events/${event.id}?postId=${post.id}`} className="btn btn-sm">
-                      Edit text
-                    </a>
+                    <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+                      <a href={`/events/${event.id}?postId=${post.id}`} className="btn btn-sm">
+                        Edit text
+                      </a>
+                      <form action={removeEventFromPostAction.bind(null, post.id, event.id)}>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          type="submit"
+                          title="Removes this event from this post only — the event itself and any other week's post are untouched"
+                        >
+                          Remove
+                        </button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               ))}

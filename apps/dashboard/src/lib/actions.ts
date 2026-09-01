@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, events, eventSources, postEvents, posts, sources } from "@college-events/db";
 import type { AdapterType, EventCategory, PostType, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
@@ -225,6 +225,29 @@ export async function toggleSourceActiveAction(sourceId: string, active: boolean
 // to the worker CLI, which can't spawn a subprocess on Vercel's serverless
 // runtime the way local dev could. renderPostAction lives in its own file
 // (render-action.ts) rather than here — see that file for why.
+
+/**
+ * Unschedules one event from this specific post's carousel — deletes only
+ * the post_events link row, never the event record itself or its
+ * appearance in any other week's post. This is the non-destructive
+ * counterpart to "Force include" (packages/core/src/logic/*, force_include
+ * flag): that pins an event into a post despite the normal score/cap
+ * filters; this un-pins it from just this one post without touching the
+ * event at all — reject an event first (see rejectEventAction) if the
+ * intent is closer to "this shouldn't be posted anywhere."
+ *
+ * Caveat worth knowing: this post's next rebuild (selectWeeklyPosts, e.g.
+ * from "Build this week's posts") re-selects that lane's events from
+ * scratch by score, same as it always has — it has no memory of a
+ * one-off manual removal, so a still-eligible event can be re-selected
+ * back into this post on the next unlocked rebuild. That's the same
+ * behavior every other manual edit to an unlocked post already has.
+ */
+export async function removeEventFromPostAction(postId: string, eventId: string) {
+  await db.delete(postEvents).where(and(eq(postEvents.postId, postId), eq(postEvents.eventId, eventId)));
+  revalidatePath(`/posts/${postId}`);
+  revalidatePath("/posts");
+}
 
 export async function approvePostAction(postId: string) {
   await approvePost(postId, "dashboard-admin");
