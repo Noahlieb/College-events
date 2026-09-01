@@ -57,7 +57,7 @@ export interface EventRow {
   flags: string[];
 }
 
-type SortKey = "name" | "startAt" | "venue" | "category" | "score" | "verificationStatus" | "status" | "sourceName";
+type SortKey = "name" | "startAt" | "venue" | "category" | "lane" | "score" | "verificationStatus" | "status" | "sourceName";
 
 /**
  * All sorting/searching happens client-side over the rows the server
@@ -152,7 +152,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
                 {sortHeader("venue", "Venue")}
                 <th>
                   {sortSubLabel("category", "Category")}
-                  <div className="th-sublabel">Goes to</div>
+                  {sortSubLabel("lane", "Goes to")}
                 </th>
                 {sortHeader("score", "Score")}
                 <th>

@@ -208,6 +208,5 @@ form.inline { display: inline; }
    selects + action buttons fits without a horizontal scrollbar on a
    normal desktop viewport. */
 .events-table th, .events-table td { padding: 8px 10px; font-size: 12px; }
-.th-sublabel { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); margin-top: 2px; }
 .truncate-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-compact { width: auto; max-width: 148px; padding: 4px 6px; font-size: 12px; }
