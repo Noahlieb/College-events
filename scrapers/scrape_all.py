@@ -59,26 +59,35 @@ def run_engage_schools(config_path: Path, days_ahead: int, out_dir: Path) -> lis
         return []
 
     merged = []
+    failed = []
     for s in owlcentral.load_schools(config_path):
         school, subdomain = s["school"], s["subdomain"]
         school_lower = school.lower()
-        api_url = owlcentral.API_URL_TMPL.format(subdomain=subdomain)
-        print(f"Loading Campus Labs Engage ({school}): {api_url} ...", file=sys.stderr)
-        events = owlcentral.fetch_upcoming_events(subdomain, days_ahead)
-        print(f"  found {len(events)} events.", file=sys.stderr)
-        if not events:
-            continue
+        try:
+            api_url = owlcentral.API_URL_TMPL.format(subdomain=subdomain)
+            print(f"Loading Campus Labs Engage ({school}): {api_url} ...", file=sys.stderr)
+            events = owlcentral.fetch_upcoming_events(subdomain, days_ahead)
+            print(f"  found {len(events)} events.", file=sys.stderr)
+            if not events:
+                continue
 
-        raw_path = out_dir / f"owlcentral_events_{school_lower}.csv"
-        raw_count = owlcentral.save_raw_csv(events, subdomain, raw_path)
-        print(f"  saved {raw_count} events to {raw_path}", file=sys.stderr)
+            raw_path = out_dir / f"owlcentral_events_{school_lower}.csv"
+            raw_count = owlcentral.save_raw_csv(events, subdomain, raw_path)
+            print(f"  saved {raw_count} events to {raw_path}", file=sys.stderr)
 
-        ce_path = out_dir / f"college_events_import_{school_lower}_owlcentral.csv"
-        ce_count = owlcentral.save_college_events_csv(events, subdomain, ce_path)
-        print(f"  wrote {ce_count} College-events-ready rows to {ce_path}", file=sys.stderr)
+            ce_path = out_dir / f"college_events_import_{school_lower}_owlcentral.csv"
+            ce_count = owlcentral.save_college_events_csv(events, subdomain, ce_path)
+            print(f"  wrote {ce_count} College-events-ready rows to {ce_path}", file=sys.stderr)
 
-        for e in events:
-            merged.append(_to_overview_row(school, "campus_labs_engage", owlcentral.to_raw_row(e, subdomain)))
+            for e in events:
+                merged.append(_to_overview_row(school, "campus_labs_engage", owlcentral.to_raw_row(e, subdomain)))
+        except Exception as e:
+            # One school's API hiccuping (a 404/500, a timeout) shouldn't
+            # cost every other school its data for the run.
+            print(f"  FAILED to scrape {school}: {e}", file=sys.stderr)
+            failed.append(school)
+    if failed:
+        print(f"\n{len(failed)} Engage school(s) failed and were skipped: {', '.join(failed)}", file=sys.stderr)
     return merged
 
 
@@ -90,35 +99,42 @@ def run_generic_schools(config_path: Path, days_ahead: int, out_dir: Path) -> li
         schools = json.load(f)
 
     merged = []
+    failed = []
     for s in schools:
         school, url = s["school"], s["url"]
         school_lower = school.lower()
-        is_ics = url.lower().split("?")[0].endswith(".ics")
-        print(f"Loading {school}: {url} {'(.ics feed)' if is_ics else ''} ...", file=sys.stderr)
-        events = generic.scrape_ics(url) if is_ics else generic.scrape_url(url, headless=True, debug_label=school_lower)
-        print(f"  found {len(events)} event(s) total.", file=sys.stderr)
+        try:
+            is_ics = url.lower().split("?")[0].endswith(".ics")
+            print(f"Loading {school}: {url} {'(.ics feed)' if is_ics else ''} ...", file=sys.stderr)
+            events = generic.scrape_ics(url) if is_ics else generic.scrape_url(url, headless=True, debug_label=school_lower)
+            print(f"  found {len(events)} event(s) total.", file=sys.stderr)
 
-        events, dropped = generic.filter_by_window(events, days_ahead)
-        if days_ahead > 0:
-            print(f"  kept {len(events)} within the next {days_ahead}d ({dropped} outside the window or undated)", file=sys.stderr)
-        if not events:
-            continue
+            events, dropped = generic.filter_by_window(events, days_ahead)
+            if days_ahead > 0:
+                print(f"  kept {len(events)} within the next {days_ahead}d ({dropped} outside the window or undated)", file=sys.stderr)
+            if not events:
+                continue
 
-        missing_before = sum(1 for e in events if not e.get("image_url"))
-        if missing_before:
-            filled = generic.backfill_missing_images(events, url)
-            print(f"  image backfill: filled {filled}/{missing_before} missing image_url(s) via each event's own page", file=sys.stderr)
+            missing_before = sum(1 for e in events if not e.get("image_url"))
+            if missing_before:
+                filled = generic.backfill_missing_images(events, url)
+                print(f"  image backfill: filled {filled}/{missing_before} missing image_url(s) via each event's own page", file=sys.stderr)
 
-        raw_path = out_dir / f"generic_events_{school_lower}.csv"
-        raw_count = generic.save_raw_csv(events, raw_path)
-        print(f"  saved {raw_count} events to {raw_path}", file=sys.stderr)
+            raw_path = out_dir / f"generic_events_{school_lower}.csv"
+            raw_count = generic.save_raw_csv(events, raw_path)
+            print(f"  saved {raw_count} events to {raw_path}", file=sys.stderr)
 
-        ce_path = out_dir / f"college_events_import_{school_lower}_generic.csv"
-        ce_count = generic.save_college_events_csv(events, ce_path)
-        print(f"  wrote {ce_count} College-events-ready rows to {ce_path}", file=sys.stderr)
+            ce_path = out_dir / f"college_events_import_{school_lower}_generic.csv"
+            ce_count = generic.save_college_events_csv(events, ce_path)
+            print(f"  wrote {ce_count} College-events-ready rows to {ce_path}", file=sys.stderr)
 
-        for row in events:
-            merged.append(_to_overview_row(school, row.get("found_via", "generic"), row))
+            for row in events:
+                merged.append(_to_overview_row(school, row.get("found_via", "generic"), row))
+        except Exception as e:
+            print(f"  FAILED to scrape {school}: {e}", file=sys.stderr)
+            failed.append(school)
+    if failed:
+        print(f"\n{len(failed)} generic-scraper school(s) failed and were skipped: {', '.join(failed)}", file=sys.stderr)
     return merged
 
 

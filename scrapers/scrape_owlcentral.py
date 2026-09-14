@@ -296,8 +296,17 @@ def main() -> None:
             print(f"No school named '{args.school}' in {config_path}", file=sys.stderr)
             sys.exit(1)
 
+    failed = []
     for s in schools:
-        scrape_school(s["school"], s["subdomain"], args.days_ahead, out_dir)
+        try:
+            scrape_school(s["school"], s["subdomain"], args.days_ahead, out_dir)
+        except Exception as e:
+            # One school's API hiccuping (a 404/500, a timeout) shouldn't
+            # cost every other school its data for the run.
+            print(f"  FAILED to scrape {s['school']}: {e}", file=sys.stderr)
+            failed.append(s["school"])
+    if failed:
+        print(f"\n{len(failed)} school(s) failed and were skipped: {', '.join(failed)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
