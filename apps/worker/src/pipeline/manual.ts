@@ -6,7 +6,7 @@ import { createAIProvider, type AIProvider } from "@college-events/ai";
 import { estimateDistanceMiles } from "../lib/geo-heuristic.js";
 import { log } from "../lib/log.js";
 import { shortenDescriptionIfNeeded } from "../lib/summarize.js";
-import { attachFlyerFromUrl } from "./event-assets.js";
+import { attachFlyerFromUrl, markAssetDiscoveryComplete } from "./event-assets.js";
 
 /**
  * Manual event entry (spec §33). Reuses the exact same raw_content shape,
@@ -205,6 +205,18 @@ export async function submitManualEvent(
       schoolShortName: school.shortName,
     });
   }
+
+  // A manual/CSV entry has exactly one source — itself. Unlike the AI
+  // adapter pipeline (process.ts), there is no second source that might
+  // still supply a real flyer later, so "discovery" is already complete
+  // the moment the one attachFlyerFromUrl attempt above has run (or been
+  // skipped, for a row with no flyerUrl at all). Without this, these
+  // events sat at assetDiscoveryStatus "pending" forever — the default a
+  // fresh row is inserted with — which silently blocked both the
+  // render-time generation fallback (render.ts) and the nightly
+  // resolve-artwork cron (both gate on "complete") from ever giving them
+  // an image at all.
+  await markAssetDiscoveryComplete(event.id);
 
   return { eventId: event.id, merged: false };
 }
