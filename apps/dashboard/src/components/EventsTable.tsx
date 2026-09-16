@@ -11,8 +11,8 @@ import {
 } from "@/lib/actions";
 
 const LANE_LABEL: Record<string, string> = {
-  monday_campus: "Mon · Campus",
-  thursday_nightlife: "Thu · Nightlife",
+  monday_campus: "Campus",
+  thursday_nightlife: "Nightlife",
 };
 
 /** Every lane an event can be manually pinned to — kept separate from
@@ -20,8 +20,8 @@ const LANE_LABEL: Record<string, string> = {
  * come from the DB and shouldn't silently gain a new option just because
  * a schedule slot uses a new postType string. */
 const LANE_OVERRIDE_OPTIONS: { value: PostType; label: string }[] = [
-  { value: "monday_campus", label: "Mon · Campus" },
-  { value: "thursday_nightlife", label: "Thu · Nightlife" },
+  { value: "monday_campus", label: "Campus" },
+  { value: "thursday_nightlife", label: "Nightlife" },
 ];
 
 const VERIFICATION_BADGE: Record<string, string> = {
@@ -284,12 +284,20 @@ const AUTO_VALUE = "__auto__";
  * "Goes to" edit control. `lane` is always the system's current answer
  * (auto-routing already folds in the manual pick and the after-9pm rule —
  * see laneForEvent), while `manualLane` is only non-null when an operator
- * has pinned it. Selecting "Auto" clears the pin and returns the event to
- * normal routing; picking a lane explicitly pins it there even past what
- * category/timing would otherwise decide.
+ * has pinned it. Selecting the top option clears the pin and returns the
+ * event to normal routing; picking a lane explicitly pins it there even
+ * past what category/timing would otherwise decide.
+ *
+ * The label itself never says "Auto" or "Manual" — both states just show
+ * the resolved lane name, per spec. The distinction still needs to be
+ * visible somewhere (an operator scanning the table for what's pinned vs.
+ * what's following the rules), so it's carried instead by a dot next to
+ * the select: filled when `manualLane` is set, hollow when the system is
+ * choosing.
  */
 function LaneSelect({ eventId, lane, manualLane }: { eventId: string; lane: string | null; manualLane: PostType | null }) {
   const [pending, startTransition] = useTransition();
+  const isManual = manualLane != null;
 
   const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value;
@@ -299,13 +307,27 @@ function LaneSelect({ eventId, lane, manualLane }: { eventId: string; lane: stri
   };
 
   return (
-    <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} className="select-compact">
-      <option value={AUTO_VALUE}>Auto{lane ? ` (${LANE_LABEL[lane] ?? lane})` : " (no post)"}</option>
-      {LANE_OVERRIDE_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <span
+        title={isManual ? "Manually pinned" : "Auto-assigned"}
+        style={{
+          display: "inline-block",
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          flexShrink: 0,
+          background: isManual ? "var(--accent, #5b8def)" : "transparent",
+          border: `1px solid ${isManual ? "var(--accent, #5b8def)" : "var(--muted, #999)"}`,
+        }}
+      />
+      <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} className="select-compact">
+        <option value={AUTO_VALUE}>{lane ? (LANE_LABEL[lane] ?? lane) : "No post"}</option>
+        {LANE_OVERRIDE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
