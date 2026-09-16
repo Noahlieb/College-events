@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
-import { db, events, eventSources, postEvents, posts, sources } from "@college-events/db";
+import { db, events, eventSources, laneSelections, postEvents, posts, sources } from "@college-events/db";
 import type { AdapterType, EventCategory, PostType, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
 // Deep imports into each pipeline file rather than the @college-events/worker
@@ -121,14 +121,36 @@ export async function updateEventCategoryAction(eventId: string, category: Event
  * the override and returns the event to normal auto-routing (see
  * laneForEvent in @college-events/core). Re-syncs weekly posts the same
  * way category/approve/reject do, so the change is reflected immediately.
+ *
+ * Every edit — a pin or a clear — is snapshotted into lane_selections
+ * first. That table is the audit trail recommendation §4 asked for, and
+ * the basis for the confidence scoring planned on top of it: nothing here
+ * reads it back yet, but every future correction after today counts for
+ * nothing if it isn't captured starting now.
  */
 export async function updateEventLaneOverrideAction(eventId: string, manualLane: PostType | null) {
+  const [before] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!before) return;
+
   const [event] = await db
     .update(events)
     .set({ manualLane, updatedAt: new Date() })
     .where(eq(events.id, eventId))
     .returning({ schoolId: events.schoolId });
   if (!event) return;
+
+  await db.insert(laneSelections).values({
+    eventId,
+    schoolId: event.schoolId,
+    lane: manualLane,
+    previousLane: before.manualLane,
+    category: before.category,
+    venue: before.venue,
+    sourceName: before.sourceName,
+    eventName: before.name,
+    startAt: before.startAt,
+  });
+
   await syncWeeklyPosts(event.schoolId);
   revalidatePath("/events");
   revalidatePath("/posts");

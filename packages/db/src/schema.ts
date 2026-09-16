@@ -705,3 +705,39 @@ export const processingLogs = pgTable("processing_logs", {
   metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * One row per operator edit to an event's "goes to" lane — every manual
+ * pin and every clear back to auto (see updateEventLaneOverrideAction). A
+ * dedicated table, not processingLogs' freeform jsonb, because a future
+ * confidence-scoring pass (recommendation §4) needs to query this by real
+ * columns — venue, category, source, day-of-week/hour derived from
+ * startAt — to find past corrections on similar events; jsonb metadata
+ * would make that a full scan every time.
+ *
+ * Event facts are snapshotted at the moment of the edit rather than
+ * joined from `events` at query time, because the event's own category/
+ * venue can change afterward (including as a *result* of this same kind
+ * of correction) — the snapshot is what the operator was actually looking
+ * at when they made the call, which is the only thing a similarity match
+ * should be comparing against.
+ */
+export const laneSelections = pgTable("lane_selections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id")
+    .notNull()
+    .references(() => events.id, { onDelete: "cascade" }),
+  schoolId: uuid("school_id")
+    .notNull()
+    .references(() => schools.id, { onDelete: "cascade" }),
+  /** The lane chosen, or null when this edit cleared the pin and returned
+   * the event to auto-routing. */
+  lane: postTypeEnum("lane"),
+  previousLane: postTypeEnum("previous_lane"),
+  category: eventCategoryEnum("category").notNull(),
+  venue: text("venue"),
+  sourceName: text("source_name"),
+  eventName: text("event_name").notNull(),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
