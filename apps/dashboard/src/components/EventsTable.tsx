@@ -4,21 +4,17 @@ import { useMemo, useState, useTransition } from "react";
 import { EVENT_CATEGORIES, type EventCategory, type PostType } from "@college-events/core";
 import {
   approveEventAction,
+  bulkUpdateEventLaneAction,
   forceIncludeEventAction,
   rejectEventAction,
   updateEventCategoryAction,
   updateEventLaneOverrideAction,
 } from "@/lib/actions";
 
-const LANE_LABEL: Record<string, string> = {
-  monday_campus: "Campus",
-  thursday_nightlife: "Nightlife",
-};
-
-/** Every lane an event can be manually pinned to — kept separate from
- * LANE_LABEL's keys since that map is also indexed by lane values that
- * come from the DB and shouldn't silently gain a new option just because
- * a schedule slot uses a new postType string. */
+/** Every lane an event can be manually pinned to — also doubles as the
+ * lane→label lookup for LaneButtons, since both real postType values are
+ * covered here and there's no separate "goes to no post" value to render
+ * a label for (LaneButtons handles that case itself). */
 const LANE_OVERRIDE_OPTIONS: { value: PostType; label: string }[] = [
   { value: "monday_campus", label: "Campus" },
   { value: "thursday_nightlife", label: "Nightlife" },
@@ -76,6 +72,8 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("startAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkPending, startBulkTransition] = useTransition();
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -130,9 +128,46 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
     </div>
   );
 
+  const toggleRow = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const visibleIds = sorted.map((e) => e.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const toggleAllVisible = () => {
+    setSelected((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      }
+      return new Set([...prev, ...visibleIds]);
+    });
+  };
+
+  /** Bulk-pin (or bulk-clear) every selected row to one lane in a single
+   * round trip (recommendation §5) — the alternative, clicking each row's
+   * lane buttons one at a time, is exactly the friction a multi-select was
+   * meant to remove. Selection is cleared right after firing: the rows
+   * refresh via the action's own revalidatePath, and holding onto stale
+   * ids across that refresh risks re-applying a bulk action to whatever
+   * unrelated events later sort into the same positions. */
+  const bulkSetLane = (lane: PostType | null) => {
+    const ids = Array.from(selected);
+    startBulkTransition(async () => {
+      await bulkUpdateEventLaneAction(ids, lane);
+    });
+    setSelected(new Set());
+  };
+
   return (
     <>
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <input
           type="search"
           placeholder="Search events by name, venue, category, or source…"
@@ -140,6 +175,28 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: "100%", maxWidth: 420 }}
         />
+        {selected.size > 0 && (
+          <div className="btn-row" style={{ alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>{selected.size} selected</span>
+            {LANE_OVERRIDE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className="btn btn-sm"
+                disabled={bulkPending}
+                onClick={() => bulkSetLane(o.value)}
+              >
+                Set to {o.label}
+              </button>
+            ))}
+            <button type="button" className="btn btn-sm" disabled={bulkPending} onClick={() => bulkSetLane(null)}>
+              Clear pin
+            </button>
+            <button type="button" className="btn btn-sm btn-icon" disabled={bulkPending} onClick={() => setSelected(new Set())} title="Cancel selection">
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="panel">
@@ -147,6 +204,9 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
           <table className="events-table">
             <thead>
               <tr>
+                <th style={{ width: 24 }}>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible events" />
+                </th>
                 {sortHeader("name", "Event")}
                 {sortHeader("startAt", "Date")}
                 {sortHeader("venue", "Venue")}
@@ -166,6 +226,9 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
             <tbody>
               {sorted.map((e) => (
                 <tr key={e.id}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleRow(e.id)} aria-label={`Select ${e.name}`} />
+                  </td>
                   <td>
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                       {e.sourceImage ? (
@@ -197,7 +260,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
                   <td>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <CategorySelect eventId={e.id} category={e.category} />
-                      <LaneSelect eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
+                      <LaneButtons eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
                     </div>
                   </td>
                   <td style={{ textAlign: "center" }}>{e.score}</td>
@@ -235,7 +298,7 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
               ))}
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="empty">
+                  <td colSpan={9} className="empty">
                     {query ? "No events match your search." : "No events match this filter."}
                   </td>
                 </tr>
@@ -278,56 +341,78 @@ function CategorySelect({ eventId, category }: { eventId: string; category: Even
   );
 }
 
-const AUTO_VALUE = "__auto__";
-
 /**
  * "Goes to" edit control. `lane` is always the system's current answer
  * (auto-routing already folds in the manual pick and the after-9pm rule —
  * see laneForEvent), while `manualLane` is only non-null when an operator
- * has pinned it. Selecting the top option clears the pin and returns the
- * event to normal routing; picking a lane explicitly pins it there even
- * past what category/timing would otherwise decide.
+ * has pinned it.
  *
- * The label itself never says "Auto" or "Manual" — both states just show
- * the resolved lane name, per spec. The distinction still needs to be
- * visible somewhere (an operator scanning the table for what's pinned vs.
- * what's following the rules), so it's carried instead by a dot next to
- * the select: filled when `manualLane` is set, hollow when the system is
- * choosing.
+ * A dropdown here meant two clicks and a scan of a list to change one
+ * value between exactly two real options — recommendation §2 asked for
+ * single-click, glanceable assignment instead, so this is a pair of
+ * always-visible pill buttons: clicking one pins the event there
+ * immediately, no menu to open first. The currently-resolved lane is
+ * always highlighted so the state reads at a glance without clicking
+ * anything.
+ *
+ * Labels never say "Auto" or "Manual" — both states just show the lane
+ * name, per recommendation §1. The distinction still needs to be visible
+ * (an operator scanning for what's pinned vs. what's following the
+ * rules), so it's carried by fill instead of text: solid when pinned,
+ * outlined when the system chose it. A pinned event also gets a small ×
+ * to clear the pin and return to auto-routing — the only control that
+ * isn't a direct one-click lane pick, because "go back to letting the
+ * rules decide" has no lane of its own to be a button for.
  */
-function LaneSelect({ eventId, lane, manualLane }: { eventId: string; lane: string | null; manualLane: PostType | null }) {
+function LaneButtons({ eventId, lane, manualLane }: { eventId: string; lane: string | null; manualLane: PostType | null }) {
   const [pending, startTransition] = useTransition();
   const isManual = manualLane != null;
+  const resolved = manualLane ?? lane;
 
-  const onChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value;
+  const setLane = (next: PostType | null) => {
     startTransition(async () => {
-      await updateEventLaneOverrideAction(eventId, next === AUTO_VALUE ? null : (next as PostType));
+      await updateEventLaneOverrideAction(eventId, next);
     });
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <span
-        title={isManual ? "Manually pinned" : "Auto-assigned"}
-        style={{
-          display: "inline-block",
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          flexShrink: 0,
-          background: isManual ? "var(--accent, #5b8def)" : "transparent",
-          border: `1px solid ${isManual ? "var(--accent, #5b8def)" : "var(--muted, #999)"}`,
-        }}
-      />
-      <select value={manualLane ?? AUTO_VALUE} onChange={onChange} disabled={pending} className="select-compact">
-        <option value={AUTO_VALUE}>{lane ? (LANE_LABEL[lane] ?? lane) : "No post"}</option>
-        {LANE_OVERRIDE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {LANE_OVERRIDE_OPTIONS.map((o) => {
+        const active = resolved === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            disabled={pending}
+            onClick={() => setLane(o.value)}
+            title={active ? (isManual ? "Manually pinned — click another lane to repin" : "Auto-assigned") : `Pin to ${o.label}`}
+            style={{
+              fontSize: 11,
+              lineHeight: 1,
+              padding: "3px 8px",
+              borderRadius: 999,
+              cursor: "pointer",
+              border: `1px solid ${active ? "var(--accent, #5b8def)" : "var(--border, #444)"}`,
+              background: active && isManual ? "var(--accent, #5b8def)" : "transparent",
+              color: active ? (isManual ? "#fff" : "var(--accent, #5b8def)") : "var(--muted, #999)",
+            }}
+          >
             {o.label}
-          </option>
-        ))}
-      </select>
+          </button>
+        );
+      })}
+      {isManual && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setLane(null)}
+          title="Clear manual pin — return to auto-routing"
+          style={{ fontSize: 12, padding: "0 3px", border: "none", background: "transparent", color: "var(--muted, #999)", cursor: "pointer" }}
+        >
+          ×
+        </button>
+      )}
+      {!resolved && <span style={{ fontSize: 11, color: "var(--muted, #999)" }}>No post</span>}
     </div>
   );
 }

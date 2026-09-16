@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, events, eventSources, laneSelections, postEvents, posts, sources } from "@college-events/db";
 import type { AdapterType, EventCategory, PostType, SourceCategory, SourceType } from "@college-events/core";
 import { fingerprintUrl } from "@college-events/ingestion";
@@ -152,6 +152,46 @@ export async function updateEventLaneOverrideAction(eventId: string, manualLane:
   });
 
   await syncWeeklyPosts(event.schoolId);
+  revalidatePath("/events");
+  revalidatePath("/posts");
+}
+
+/**
+ * Bulk version of updateEventLaneOverrideAction (recommendation §5) — pin
+ * or clear a whole multi-select at once instead of one dropdown edit per
+ * row. Each event still gets its own lane_selections row (same audit trail
+ * as an individual edit; a bulk pick is real evidence for the same future
+ * confidence scoring), but weekly-post sync and revalidation happen once
+ * for the batch rather than once per event, since a selection of 30 events
+ * would otherwise mean 30 redundant rebuilds of the same post.
+ */
+export async function bulkUpdateEventLaneAction(eventIds: string[], manualLane: PostType | null) {
+  if (eventIds.length === 0) return;
+
+  const before = await db.select().from(events).where(inArray(events.id, eventIds));
+  if (before.length === 0) return;
+
+  await db.update(events).set({ manualLane, updatedAt: new Date() }).where(inArray(events.id, eventIds));
+
+  await db.insert(laneSelections).values(
+    before.map((e) => ({
+      eventId: e.id,
+      schoolId: e.schoolId,
+      lane: manualLane,
+      previousLane: e.manualLane,
+      category: e.category,
+      venue: e.venue,
+      sourceName: e.sourceName,
+      eventName: e.name,
+      startAt: e.startAt,
+    })),
+  );
+
+  const schoolIds = new Set(before.map((e) => e.schoolId));
+  for (const schoolId of schoolIds) {
+    await syncWeeklyPosts(schoolId);
+  }
+
   revalidatePath("/events");
   revalidatePath("/posts");
 }
