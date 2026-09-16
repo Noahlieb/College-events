@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { EVENT_CATEGORIES, type EventCategory, type PostType } from "@college-events/core";
+import { EVENT_CATEGORIES, type EventCategory, type LaneConfidenceResult, type PostType } from "@college-events/core";
 import {
   approveEventAction,
   bulkUpdateEventLaneAction,
@@ -45,6 +45,9 @@ export interface EventRow {
   category: EventCategory;
   lane: string | null; // postType, or null when no lane accepts this category
   manualLane: PostType | null; // operator's explicit "goes to" override, if any
+  /** How much past manual corrections back up the resolved lane above —
+   * see @college-events/core's laneConfidence (recommendation §4). */
+  confidence: LaneConfidenceResult;
   score: number;
   verificationStatus: string;
   status: string;
@@ -260,7 +263,10 @@ export function EventsTable({ rows }: { rows: EventRow[] }) {
                   <td>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <CategorySelect eventId={e.id} category={e.category} />
-                      <LaneButtons eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <LaneButtons eventId={e.id} lane={e.lane} manualLane={e.manualLane} />
+                        <ConfidenceBadge confidence={e.confidence} />
+                      </div>
                     </div>
                   </td>
                   <td style={{ textAlign: "center" }}>{e.score}</td>
@@ -338,6 +344,33 @@ function CategorySelect({ eventId, category }: { eventId: string; category: Even
         </option>
       ))}
     </select>
+  );
+}
+
+const CONFIDENCE_STYLE: Record<Exclude<LaneConfidenceResult["level"], "unknown">, { symbol: string; color: string }> = {
+  high: { symbol: "●", color: "var(--green, #2ea043)" },
+  medium: { symbol: "●", color: "var(--amber, #d9a520)" },
+  low: { symbol: "▲", color: "var(--red, #e5484d)" },
+};
+
+/**
+ * Confidence indicator for the resolved lane (recommendation §4), built
+ * from past manual corrections at this venue (or, absent that, this
+ * source+category) — see @college-events/core's laneConfidence. "Unknown"
+ * renders nothing: the table has no opinion yet for most events until
+ * enough operator history accumulates, and a badge on every single row
+ * saying "no data" would be worse than no badge at all. Deliberately just
+ * a colored mark, not a numeric score — the tooltip carries the actual
+ * "3/3 past picks..." reasoning for anyone who wants it, but the row
+ * itself only needs to say "trust this" / "double-check this" at a glance.
+ */
+function ConfidenceBadge({ confidence }: { confidence: LaneConfidenceResult }) {
+  if (confidence.level === "unknown") return null;
+  const { symbol, color } = CONFIDENCE_STYLE[confidence.level];
+  return (
+    <span title={confidence.reason} style={{ color, fontSize: 10, cursor: "help" }}>
+      {symbol}
+    </span>
   );
 }
 

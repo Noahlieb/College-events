@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lt } from "drizzle-orm";
-import { assetCandidates, db, events } from "@college-events/db";
-import { laneForEvent, localDateRangeToUtc } from "@college-events/core";
+import { assetCandidates, db, events, laneSelections } from "@college-events/db";
+import { laneConfidence, laneForEvent, localDateRangeToUtc, type LaneSelectionHistoryEntry } from "@college-events/core";
 import { getCurrentSchool } from "@/lib/current-school";
 import { EventsTable, type EventRow } from "@/components/EventsTable";
 import { ShortenDescriptionsButton } from "@/components/ShortenDescriptionsButton";
@@ -47,6 +47,14 @@ export default async function EventsPage({
     .where(and(...filters))
     .orderBy(desc(events.startAt));
 
+  // Selection history for the confidence indicator (recommendation §4).
+  // Scoped to this school and capped rather than paged — the table is new
+  // and starts empty, and even a season's worth of manual corrections is a
+  // small, cheap scan next to the events query above.
+  const history: LaneSelectionHistoryEntry[] = (
+    await db.select().from(laneSelections).where(eq(laneSelections.schoolId, school.id)).orderBy(desc(laneSelections.createdAt)).limit(2000)
+  ).map((h) => ({ venue: h.venue, sourceName: h.sourceName, category: h.category, lane: h.lane }));
+
   const tableRows: EventRow[] = rows.map(({ event: e, canonicalStorageUrl }) => {
     const lane = laneForEvent({
       category: e.category,
@@ -54,14 +62,16 @@ export default async function EventsPage({
       timezone: school.timezone,
       manualLane: e.manualLane,
     });
+    const resolvedLane = lane?.postType ?? null;
     return {
       id: e.id,
       name: e.name,
       startAt: e.startAt.toISOString(),
       venue: e.venue,
       category: e.category,
-      lane: lane?.postType ?? null,
+      lane: resolvedLane,
       manualLane: e.manualLane,
+      confidence: laneConfidence({ venue: e.venue, sourceName: e.sourceName, category: e.category, resolvedLane }, history),
       score: e.bucketScores.overall,
       verificationStatus: e.verificationStatus,
       status: e.status,
