@@ -159,7 +159,7 @@ export async function submitManualEvent(
         // flyer-OCR recovery above is what filled it in, 0 when neither did.
         venue: input.venue ? 1 : venue ? 0.6 : 0,
         price: input.price ? 1 : 0,
-        category: 1,
+        category: input.categoryConfidence ?? 1,
       },
       relevanceScore: bucketScores.overall,
       bucketScores,

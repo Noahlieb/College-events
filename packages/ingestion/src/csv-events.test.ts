@@ -219,6 +219,28 @@ describe("parseEventsCsv — Campus Labs Engage export", () => {
     expect(rows[0]!.input.startTime).toBe("09:00");
   });
 
+  it("defaults an uncategorizable row to campus instead of 'other', with a low categoryConfidence", () => {
+    // Nothing here (name, org, description) hits a CATEGORY_KEYWORDS entry,
+    // so categorizeEvent alone would return "other" — which routes to no
+    // lane at all. Campus Labs Engage only lists university/registered-org
+    // activity, so the platform itself is the signal.
+    const { rows } = parseEventsCsv(
+      engageCsv("FAU,campus_labs_engage,Weekly Chess Hangout,FAU Chess,2026-09-01T20:00:00+00:00,,Gaming Lounge,Bring your own board,https://x.com,"),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(rows[0]!.input.category).toBe("campus");
+    expect(rows[0]!.input.categoryConfidence).toBe(0.4);
+  });
+
+  it("leaves categoryConfidence unset when the text genuinely matches a category", () => {
+    const { rows } = parseEventsCsv(
+      engageCsv("FAU,campus_labs_engage,Rush Week Info Session,FAU Greek Life,2026-09-01T20:00:00+00:00,,Student Union,Meet the chapters,https://x.com,"),
+      { defaultCity: "Boca Raton", submittedBy: "test", timezone: "America/New_York" },
+    );
+    expect(rows[0]!.input.category).toBe("student_org");
+    expect(rows[0]!.input.categoryConfidence).toBeUndefined();
+  });
+
   it("does not get misdetected as the posh.vip format, and vice versa", () => {
     // Guards the header-sniffing regexes against a false match — "starts_on"
     // must never trip the posh.vip "start_date" check or vice versa.
@@ -235,4 +257,41 @@ describe("parseEventsCsv — Campus Labs Engage export", () => {
     const { rows: poshRows } = parseEventsCsv(poshCsv, { defaultCity: "Boca Raton", submittedBy: "test" });
     expect(poshRows[0]!.input.startTime).toBe("22:00");
   });
+});
+
+describe("parseEventsCsv — posh.vip scraper export", () => {
+  const POSH_HEADER = "scraped_at,school,name,start_date,end_date,venue,address,organizer,description,image_url,event_url";
+
+  function poshCsv(...rows: string[]): string {
+    return [POSH_HEADER, ...rows].join("\n");
+  }
+
+  it("defaults an uncategorizable row to nightlife instead of 'other', with a low categoryConfidence", () => {
+    // Nothing here hits a CATEGORY_KEYWORDS entry, so categorizeEvent alone
+    // would return "other" — which routes to no lane at all. This scraper
+    // only ever lists Posh.vip nightlife listings, so the platform itself
+    // is the signal (same reasoning as sources.categoryBias for the
+    // AI-ingestion equivalent of this source, see process.ts).
+    const { rows } = poshRows(
+      poshCsv(
+        '2026-08-30T00:00:00Z,FAU,VIP Evening at The Wharf,2026-08-31T22:00:00-04:00,,The Wharf,"401 SW 1st Ave, Fort Lauderdale, FL 33301, USA",,"Doors at nine, dress to impress.",,https://x.com',
+      ),
+    );
+    expect(rows[0]!.input.category).toBe("nightlife");
+    expect(rows[0]!.input.categoryConfidence).toBe(0.4);
+  });
+
+  it("leaves categoryConfidence unset when the text genuinely matches a category", () => {
+    const { rows } = poshRows(
+      poshCsv(
+        '2026-08-30T00:00:00Z,FAU,Neon DJ Night,2026-08-31T22:00:00-04:00,,Culture Room,"1 Culture Rd, Fort Lauderdale, FL 33301, USA",,"DJ sets all night",,https://x.com',
+      ),
+    );
+    expect(rows[0]!.input.category).toBe("nightlife");
+    expect(rows[0]!.input.categoryConfidence).toBeUndefined();
+  });
+
+  function poshRows(csvText: string) {
+    return parseEventsCsv(csvText, { defaultCity: "Boca Raton", submittedBy: "test" });
+  }
 });

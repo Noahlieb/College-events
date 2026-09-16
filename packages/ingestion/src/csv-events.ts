@@ -269,7 +269,16 @@ function parsePoshEventsCsv(csvText: string, opts: { defaultCity: string; submit
     const end = endDateRaw ? splitLocalIso(endDateRaw) : null;
 
     const city = address ? cityFromAddress(address, opts.defaultCity) : opts.defaultCity;
-    const { category } = categorizeEvent({ name, description, organization: organizer });
+    const { category: guessed } = categorizeEvent({ name, description, organization: organizer });
+    // Posh.vip is a nightlife ticketing platform end to end (see
+    // process.ts's resolveCategory / sources.categoryBias, which pins the
+    // AI-ingestion equivalent of this source to "nightlife" outright) — a
+    // row categorizeEvent couldn't match anything for is still a nightlife
+    // listing, not an uncategorized event, so it defaults there instead of
+    // landing on "other" and falling out of every lane. Flagged with a low
+    // categoryConfidence rather than treated as a real classification.
+    const category = guessed === "other" ? "nightlife" : guessed;
+    const categoryConfidence = guessed === "other" ? 0.4 : undefined;
     const ageRequirement = /\b21\+/.test(`${name} ${description}`) ? "21+" : null;
 
     rows.push({
@@ -287,6 +296,7 @@ function parsePoshEventsCsv(csvText: string, opts: { defaultCity: string; submit
         flyerUrl: imageUrl || null,
         sourceUrl: eventUrl || null,
         category,
+        categoryConfidence,
         organization: organizer || null,
         ageRequirement,
         isRecurring: /\brecurring\b/i.test(description),
@@ -352,7 +362,15 @@ function parseEngageEventsCsv(csvText: string, opts: { defaultCity: string; subm
     const endTime = end && end.date === start.date ? end.time : null;
 
     const { venue, city } = splitVenue(venueRaw, opts.defaultCity);
-    const category = resolveCategory("", name, notes); // no explicit Category column in this export
+    const guessed = resolveCategory("", name, notes); // no explicit Category column in this export
+    // Campus Labs Engage (Owl Central, Knight Connect, ...) only lists
+    // university-run/registered-org activity — a row that matched no
+    // keyword is still a campus event, not an uncategorized one, so it
+    // defaults there instead of landing on "other" and falling out of
+    // every lane. Flagged with a low categoryConfidence rather than
+    // treated as a real classification.
+    const category = guessed === "other" ? "campus" : guessed;
+    const categoryConfidence = guessed === "other" ? 0.4 : undefined;
     const ageRequirement = /\b21\+/.test(`${name} ${notes}`) ? "21+" : null;
     const isRecurring = /\brecurring\b/i.test(notes);
     const description = [notes, venueRaw && venue !== venueRaw ? venueRaw : null].filter(Boolean).join(" — ") || name;
@@ -372,6 +390,7 @@ function parseEngageEventsCsv(csvText: string, opts: { defaultCity: string; subm
         flyerUrl: imageUrl || null,
         sourceUrl: link || null,
         category,
+        categoryConfidence,
         organization: presenter || null,
         ageRequirement,
         isRecurring,

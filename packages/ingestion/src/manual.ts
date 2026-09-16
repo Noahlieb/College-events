@@ -13,6 +13,13 @@ export interface ManualEventInput {
   sourceUrl: string | null;
   category: EventCategory;
   submittedBy: string;
+  /** How sure the caller actually is about `category`, 0..1. Omitted means
+   * "certain" (a human picked it, or a CSV column named it directly) — the
+   * previous, unconditional behavior. A CSV parser that had to fall back to
+   * a source-type default because nothing in the text matched a category
+   * (see csv-events.ts's per-platform "other" fallback) sets this lower, so
+   * the review UI can flag it as a guess rather than a real classification. */
+  categoryConfidence?: number;
   /** Optional richer fields a bulk source (e.g. a CSV import) may already
    * know and a one-off manual entry usually doesn't — all default to the
    * previous manual-entry behavior when omitted, so existing callers are
