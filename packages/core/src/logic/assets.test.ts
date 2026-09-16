@@ -27,14 +27,48 @@ describe("the rule: official artwork beats generated artwork", () => {
     expect(decision.action !== "generate_fallback" && decision.asset.id).toBe("flyer");
   });
 
-  it("prefers a small official flyer over a perfect generated image", () => {
-    // Resolution never outranks provenance. The flyer is what the
-    // organizer actually published.
+  it("prefers a small (but not too small) official flyer over a perfect generated image", () => {
+    // Resolution never outranks provenance, as long as the flyer clears
+    // the minimum usable size. The flyer is what the organizer actually
+    // published.
     const decision = decideEventAsset([
       asset({ id: "gen", classification: "generated", isAiGenerated: true, width: 4000, height: 4000, confidence: 1 }),
-      asset({ id: "flyer", width: 400, height: 400, confidence: 0.5 }),
+      asset({ id: "flyer", width: 700, height: 700, confidence: 0.5 }),
     ]);
     expect(decision.action !== "generate_fallback" && decision.asset.id).toBe("flyer");
+  });
+
+  it("does not let an official flyer's own resolution block it when no dimensions were recorded", () => {
+    // Unknown (null) width/height must never be treated as insufficient —
+    // otherwise every legacy row without a recorded size would suddenly
+    // lose to generated art.
+    const decision = decideEventAsset([asset({ id: "flyer" })]);
+    expect(decision.action !== "generate_fallback" && decision.asset.id).toBe("flyer");
+  });
+
+  it("falls back to generation when the only official artwork is below the minimum resolution (recommendation §8)", () => {
+    const decision = decideEventAsset([asset({ id: "flyer", width: 200, height: 150 })]);
+    expect(decision.action).toBe("generate_fallback");
+    expect(decision.reason).toMatch(/minimum usable resolution/);
+  });
+
+  it("lets generated art win once a real flyer's own resolution is too low", () => {
+    const decision = decideEventAsset([
+      asset({ id: "flyer", width: 200, height: 150 }),
+      asset({ id: "gen", classification: "generated", isAiGenerated: true, width: 1024, height: 1024, confidence: 1 }),
+    ]);
+    // decideEventAsset itself never returns a generated candidate (that's
+    // resolveEventArtwork's job once it sees generate_fallback) — the
+    // point here is that the low-res flyer no longer blocks that path.
+    expect(decision.action).toBe("generate_fallback");
+  });
+
+  it("does not apply the resolution floor to an unofficial repost", () => {
+    // A real, if unverified, picture at any size still beats generating —
+    // the floor only concerns official visuals, whose low resolution is
+    // what recommendation §8 asks to auto-fix.
+    const decision = decideEventAsset([asset({ id: "repost", isOfficial: false, width: 100, height: 100 })]);
+    expect(decision.action).toBe("use_unofficial");
   });
 
   it("only generates when nothing real was offered by any source", () => {
@@ -144,6 +178,15 @@ describe("hasOfficialFlyer", () => {
     expect(hasOfficialFlyer([asset({ id: "l", classification: "logo" })])).toBe(false);
     expect(hasOfficialFlyer([asset({ id: "r", isOfficial: false })])).toBe(false);
     expect(hasOfficialFlyer([generated()])).toBe(false);
+  });
+  it("is true for an official flyer with no recorded dimensions", () => {
+    expect(hasOfficialFlyer([asset({ id: "a" })])).toBe(true);
+  });
+  it("is true for an official flyer at or above the minimum resolution", () => {
+    expect(hasOfficialFlyer([asset({ id: "a", width: 600, height: 600 })])).toBe(true);
+  });
+  it("is false for an official flyer below the minimum resolution (recommendation §8)", () => {
+    expect(hasOfficialFlyer([asset({ id: "a", width: 300, height: 599 })])).toBe(false);
   });
 });
 

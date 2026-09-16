@@ -269,3 +269,45 @@ describe("hasOfficialVisual is the predicate the gate depends on", () => {
     expect(hasOfficialVisual([asset({ id: "r", classification: "flyer", isOfficial: false })])).toBe(false);
   });
 });
+
+describe("recommendation #8: a low-resolution official flyer no longer blocks generation", () => {
+  it("generator IS called when the only official flyer is below the minimum resolution", async () => {
+    const generate = generatorSpy();
+    const gate = await runPipeline(
+      { candidates: [asset({ id: "flyer", width: 200, height: 150 })], assetDiscoveryComplete: true, hasCurrentGeneratedAsset: false },
+      generate,
+    );
+    expect(gate.allowed).toBe(true);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("generator is still NOT called when the official flyer clears the minimum resolution", async () => {
+    const generate = generatorSpy();
+    const gate = await runPipeline(
+      { candidates: [asset({ id: "flyer", width: 600, height: 600 })], assetDiscoveryComplete: true, hasCurrentGeneratedAsset: false },
+      generate,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("generator is still NOT called for a low-resolution UNOFFICIAL repost — the floor only concerns official visuals", async () => {
+    const generate = generatorSpy();
+    const gate = await runPipeline(
+      { candidates: [asset({ id: "repost", isOfficial: false, width: 50, height: 50 })], assetDiscoveryComplete: true, hasCurrentGeneratedAsset: false },
+      generate,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("does not treat unknown (unmeasured) dimensions as low resolution", async () => {
+    const generate = generatorSpy();
+    const gate = await runPipeline(
+      { candidates: [asset({ id: "flyer" })], assetDiscoveryComplete: true, hasCurrentGeneratedAsset: false },
+      generate,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(generate).not.toHaveBeenCalled();
+  });
+});

@@ -89,6 +89,24 @@ export function assetTier(candidate: AssetCandidateLike): number {
 }
 
 /**
+ * Minimum size (px, on the shorter side) an *official* flyer/event_art
+ * needs to count as sufficient on its own (recommendation §8: auto-fix
+ * poor-quality flyers). Below this, it's still real and still official —
+ * just not good enough to block a generated replacement the way a normal
+ * official visual does.
+ *
+ * Unknown dimensions (no width/height recorded) are never treated as
+ * insufficient. This only fires on a size we actually measured, so a
+ * legacy row with no recorded dimensions is never silently second-guessed.
+ */
+export const MIN_OFFICIAL_VISUAL_DIMENSION = 600;
+
+function isSufficientResolution(candidate: AssetCandidateLike): boolean {
+  if (candidate.width == null || candidate.height == null) return true;
+  return Math.min(candidate.width, candidate.height) >= MIN_OFFICIAL_VISUAL_DIMENSION;
+}
+
+/**
  * Whether an event has an *official visual* — art an organizer or venue
  * published for this event.
  *
@@ -96,13 +114,19 @@ export function assetTier(candidate: AssetCandidateLike): number {
  * A venue photo deliberately does not count: it is a picture of the room,
  * not of the night, so generating event-specific art is a real improvement
  * over it. A logo or a platform share card likewise.
+ *
+ * Nor, since recommendation §8, does an official flyer/event_art below
+ * MIN_OFFICIAL_VISUAL_DIMENSION — a real flyer at 200x150 is barely more
+ * useful to a reader than no flyer at all, and generation is allowed to
+ * step in exactly as if none had been offered.
  */
 export function hasOfficialVisual(candidates: AssetCandidateLike[]): boolean {
   return candidates.some(
     (c) =>
       !c.isAiGenerated &&
       c.isOfficial &&
-      (c.classification === "flyer" || c.classification === "event_art"),
+      (c.classification === "flyer" || c.classification === "event_art") &&
+      isSufficientResolution(c),
   );
 }
 
@@ -197,10 +221,16 @@ export type AssetDecision<T> =
  *
  * Generation is the last resort and is only reached when *no source
  * anywhere* offered usable artwork — not when the first source happened
- * not to have one.
+ * not to have one. As of recommendation §8, an official flyer/event_art
+ * below MIN_OFFICIAL_VISUAL_DIMENSION doesn't count as usable either — see
+ * hasOfficialVisual's doc comment. That exclusion only applies to official
+ * candidates: an unofficial repost's resolution isn't second-guessed here,
+ * since a real (if unverified) picture at any size still beats generating.
  */
 export function decideEventAsset<T extends AssetCandidateLike>(candidates: T[]): AssetDecision<T> {
-  const usable = candidates.filter((c) => !c.isAiGenerated && c.classification !== "generated");
+  const usable = candidates.filter(
+    (c) => !c.isAiGenerated && c.classification !== "generated" && (!c.isOfficial || isSufficientResolution(c)),
+  );
 
   if (usable.length === 0) {
     return {
@@ -208,7 +238,9 @@ export function decideEventAsset<T extends AssetCandidateLike>(candidates: T[]):
       reason:
         candidates.length === 0
           ? "no source offered any artwork for this event"
-          : "every candidate was generated artwork",
+          : candidates.every((c) => c.isAiGenerated || c.classification === "generated")
+            ? "every candidate was generated artwork"
+            : "the only artwork offered is an official flyer/event_art below the minimum usable resolution",
     };
   }
 
@@ -299,9 +331,15 @@ export function artworkGenerationGate(input: ArtworkGateInput): ArtworkGate {
 
   // Real art made for this event blocks generation even when we cannot
   // verify who published it. A repost of the promoter's actual flyer is
-  // still the actual flyer.
+  // still the actual flyer — its resolution is never second-guessed here,
+  // unlike an *official* flyer/event_art, which recommendation §8 exempts
+  // below MIN_OFFICIAL_VISUAL_DIMENSION (same rule as hasOfficialVisual
+  // and decideEventAsset's `usable` filter — kept in sync with both).
   const eventSpecific = input.candidates.find(
-    (c) => !c.isAiGenerated && (c.classification === "flyer" || c.classification === "event_art"),
+    (c) =>
+      !c.isAiGenerated &&
+      (c.classification === "flyer" || c.classification === "event_art") &&
+      (!c.isOfficial || isSufficientResolution(c)),
   );
   if (eventSpecific) {
     return {
