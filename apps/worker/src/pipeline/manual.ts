@@ -52,15 +52,20 @@ export async function submitManualEvent(
 
   const category: EventCategory = input.category;
 
-  // If the CSV/manual entry has no venue but a flyer image was submitted,
-  // try reading it off the flyer before falling back to the renderer's
-  // "no location" treatment. Bounded to venue only (not price) so a large
-  // CSV import with hundreds of flyer URLs doesn't turn into hundreds of
-  // vision-model calls — venue is also the more visually reliable of the
-  // two to recover this way. Best-effort: a failed/slow OCR call must
+  // If the CSV/manual entry is missing venue, price, or an age requirement
+  // but a flyer image was submitted, try reading them off the flyer before
+  // falling back to blank. One vision-model call covers all three (rather
+  // than one call per field) so recommendation #6 — recovering more than
+  // just venue — doesn't multiply the request count for a large CSV import
+  // with hundreds of flyer URLs; the call only fires at all when something
+  // is actually still missing. Best-effort: a failed/slow OCR call must
   // never block the event from being created.
   let venue = input.venue;
-  if (!venue && input.flyerUrl) {
+  let price = input.price;
+  let ageRequirement = input.ageRequirement ?? null;
+  let venueFromFlyer = false;
+  let priceFromFlyer = false;
+  if (input.flyerUrl && (!venue || !price || !ageRequirement)) {
     try {
       const flyerAnalysis = await aiProvider.analyzeFlyer({
         schoolContext: { name: school.name, shortName: school.shortName, city: school.city, state: school.state, timezone: school.timezone },
@@ -68,9 +73,20 @@ export async function submitManualEvent(
         caption: input.description,
         currentDate: new Date().toISOString().slice(0, 10),
       });
-      venue = flyerAnalysis.extracted.venue ?? venue;
+      if (!venue && flyerAnalysis.extracted.venue) {
+        venue = flyerAnalysis.extracted.venue;
+        venueFromFlyer = true;
+      }
+      if (!price && flyerAnalysis.extracted.price) {
+        price = flyerAnalysis.extracted.price;
+        priceFromFlyer = true;
+      }
+      if (!ageRequirement && flyerAnalysis.extracted.age_requirement) {
+        ageRequirement = flyerAnalysis.extracted.age_requirement;
+      }
     } catch {
-      // leave venue null — the renderer's own missing-location fallback covers it
+      // leave whatever was missing blank — the renderer's own fallbacks
+      // (no location, no price shown) cover it
     }
   }
 
@@ -92,7 +108,7 @@ export async function submitManualEvent(
   const bucketScores = scoreEvent({
     category,
     distanceMiles,
-    priceText: input.price,
+    priceText: price,
     isCampusAffiliated,
     daysUntilStart: daysOut,
     isRecurring: input.isRecurring ?? false,
@@ -140,8 +156,8 @@ export async function submitManualEvent(
       city: input.city ?? null,
       latitude: input.latitude ?? null,
       longitude: input.longitude ?? null,
-      price: input.price,
-      ageRequirement: input.ageRequirement ?? null,
+      price,
+      ageRequirement,
       category,
       tags: [category],
       organization: input.organization ?? null,
@@ -157,8 +173,8 @@ export async function submitManualEvent(
         endTime: input.endTime ? 1 : 0,
         // 1 when the human/CSV supplied it directly, a notch down when the
         // flyer-OCR recovery above is what filled it in, 0 when neither did.
-        venue: input.venue ? 1 : venue ? 0.6 : 0,
-        price: input.price ? 1 : 0,
+        venue: input.venue ? 1 : venueFromFlyer ? 0.6 : 0,
+        price: input.price ? 1 : priceFromFlyer ? 0.6 : 0,
         category: input.categoryConfidence ?? 1,
       },
       relevanceScore: bucketScores.overall,
