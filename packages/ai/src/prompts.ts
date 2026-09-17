@@ -1,4 +1,5 @@
 import type {
+  AnalyzeDealInput,
   AnalyzeEventInput,
   AnalyzeFlyerInput,
   ClassifyEventInput,
@@ -112,6 +113,32 @@ export function generateCaptionPrompt(input: GenerateCaptionInput): { system: st
     "Events in this post:",
     ...input.events.map((e, i) => `${i + 1}. ${e.name} — ${e.venue ?? "TBD"} — ${e.date}`),
   ].join("\n");
+  return { system, user };
+}
+
+export function extractDealPrompt(input: AnalyzeDealInput): { system: string; user: string } {
+  const system = [
+    `You extract structured deal/promotion data for a business near ${input.universityContext.name} (${input.universityContext.shortName}), a college in ${input.universityContext.city}, ${input.universityContext.state}.`,
+    "You will be given text pulled from a merchant's own specials/menu/rewards page or social post.",
+    "Only set is_deal to true if the text clearly describes a specific, actionable promotion (a price, a discount, BOGO, a free item, or a named recurring special) — not a generic ad, a menu with no promo, or unrelated chatter.",
+    "Prioritize deals students can act on today/this week/this month over vague permanent claims.",
+    "NEVER invent a price, discount amount, expiration date, or day of week that isn't stated — leave the field null/empty instead. If the offer is a standing weekly special (e.g. 'Taco Tuesday every week'), set recurring true and fill valid_days_of_week; do not invent an expiration_date for it.",
+    JSON_ONLY_RULE,
+    `Schema: {"is_deal":boolean,"title":string|null,"deal_category":one of [food_restaurant,coffee_cafe,dessert,fast_casual,pizza_wings,bar_nightlife,fitness,beauty_barber_nails,entertainment,housing,retail_services,other]|null,"clean_offer_description":string|null,"normal_price":string|null,"deal_price":string|null,"discount_percent":number|null,"discount_dollars":number|null,"is_bogo":boolean,"is_free_item":boolean,"student_id_required":boolean,"promo_code":string|null,"valid_days_of_week":number[] (0=Sunday..6=Saturday),"start_date":"YYYY-MM-DD"|null,"expiration_date":"YYYY-MM-DD"|null,"start_time":"HH:mm"|null,"end_time":"HH:mm"|null,"recurring":boolean,"recurrence_pattern":string|null,"location_restrictions":string|null,"minimum_purchase":string|null,"eligibility":string|null,"confidence":number between 0 and 1}`,
+  ].join("\n");
+
+  const user = [
+    `Today's date: ${input.currentDate}`,
+    `Merchant: ${input.merchantName} (${input.merchantCategory})`,
+    `Source: ${input.sourceType}`,
+    input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
+    "",
+    "Raw text:",
+    input.rawText ?? "(no text)",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return { system, user };
 }
 

@@ -4,6 +4,7 @@ import {
   CaptionSchema,
   ClassificationSchema,
   DuplicateComparisonSchema,
+  ExtractedDealSchema,
   ExtractedEventSchema,
   FlyerAnalysisSchema,
   SummarySchema,
@@ -11,6 +12,7 @@ import {
   type Caption,
   type Classification,
   type DuplicateComparison,
+  type ExtractedDeal,
   type ExtractedEvent,
   type FlyerAnalysis,
   type Summary,
@@ -20,6 +22,7 @@ import {
   analyzeFlyerPrompt,
   classifyEventPrompt,
   compareDuplicatesPrompt,
+  extractDealPrompt,
   generateCaptionPrompt,
   scoreEventPrompt,
   summarizeEventPrompt,
@@ -27,6 +30,7 @@ import {
 import { parseAndValidate } from "../json-util.js";
 import type {
   AIProvider,
+  AnalyzeDealInput,
   AnalyzeEventInput,
   AnalyzeFlyerInput,
   ClassifyEventInput,
@@ -120,5 +124,11 @@ export class AnthropicAIProvider implements AIProvider {
     const { system, user } = compareDuplicatesPrompt(input);
     const raw = await this.complete(system, user);
     return parseAndValidate(this.name, raw, DuplicateComparisonSchema);
+  }
+
+  async extractDeal(input: AnalyzeDealInput): Promise<ExtractedDeal> {
+    const { system, user } = extractDealPrompt(input);
+    const raw = await this.complete(system, user);
+    return parseAndValidate(this.name, raw, ExtractedDealSchema);
   }
 }

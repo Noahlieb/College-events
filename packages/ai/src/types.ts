@@ -3,6 +3,7 @@ import type {
   Caption,
   Classification,
   DuplicateComparison,
+  ExtractedDeal,
   ExtractedEvent,
   FlyerAnalysis,
   Summary,
@@ -67,6 +68,17 @@ export interface CompareDuplicatesInput {
   eventB: { name: string; description: string | null; venue: string | null; startAt: string };
 }
 
+export interface AnalyzeDealInput {
+  universityContext: SchoolContext;
+  merchantName: string;
+  merchantCategory: string;
+  sourceType: string;
+  sourceUrl: string | null;
+  /** Normalized text pulled from the changed portion of a monitored source. */
+  rawText: string | null;
+  currentDate: string;
+}
+
 /**
  * Provider-agnostic AI surface for the whole content pipeline (spec §6).
  * Application code must depend only on this interface — never import
@@ -81,6 +93,7 @@ export interface AIProvider {
   summarizeEvent(input: SummarizeEventInput): Promise<Summary>;
   generateCaption(input: GenerateCaptionInput): Promise<Caption>;
   compareDuplicates(input: CompareDuplicatesInput): Promise<DuplicateComparison>;
+  extractDeal(input: AnalyzeDealInput): Promise<ExtractedDeal>;
 }
 
 export class AIProviderError extends Error {

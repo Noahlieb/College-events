@@ -9,3 +9,4 @@ export * from "./manual.js";
 export * from "./csv.js";
 export * from "./csv-events.js";
 export * from "./registry.js";
+export * from "./deal-source.js";

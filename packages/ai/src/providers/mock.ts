@@ -1,5 +1,6 @@
-import { categorizeEvent } from "@college-events/core";
+import { categorizeEvent, type DealCategory } from "@college-events/core";
 import type {
+  AnalyzeDealInput,
   AnalyzeEventInput,
   AnalyzeFlyerInput,
   AIProvider,
@@ -14,6 +15,7 @@ import type {
   Caption,
   Classification,
   DuplicateComparison,
+  ExtractedDeal,
   ExtractedEvent,
   FlyerAnalysis,
   Summary,
@@ -105,6 +107,94 @@ function extractAge(text: string): string | null {
 function looksLikeAnEvent(text: string, hasDate: boolean, hasTime: boolean): boolean {
   if (hasDate || hasTime) return true;
   return false;
+}
+
+const DAY_NAMES: [RegExp, number][] = [
+  [/\bsun(day)?s?\b/i, 0],
+  [/\bmon(day)?s?\b/i, 1],
+  [/\btue(s(day)?)?s?\b/i, 2],
+  [/\bwed(nesday)?s?\b/i, 3],
+  [/\bthu(r(s(day)?)?)?s?\b/i, 4],
+  [/\bfri(day)?s?\b/i, 5],
+  [/\bsat(urday)?s?\b/i, 6],
+];
+
+function extractValidDaysOfWeek(text: string): number[] {
+  const days = new Set<number>();
+  for (const [re, day] of DAY_NAMES) {
+    if (re.test(text)) days.add(day);
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+function extractDiscountPercent(text: string): number | null {
+  const m = /(\d{1,3})\s*%\s*off/i.exec(text);
+  return m ? Math.min(100, parseInt(m[1]!, 10)) : null;
+}
+
+function extractDiscountDollars(text: string): number | null {
+  const m = /\$(\d+(?:\.\d{2})?)\s*off/i.exec(text);
+  return m ? parseFloat(m[1]!) : null;
+}
+
+function extractDealPrice(text: string): string | null {
+  const m = /(?:for|only|just)\s*\$(\d+(?:\.\d{2})?)/i.exec(text) ?? /\$(\d+(?:\.\d{2})?)/.exec(text);
+  return m ? `$${m[1]}` : null;
+}
+
+function extractPromoCode(text: string): string | null {
+  const m = /\bcode[:\s]+([A-Z0-9]{3,15})\b/i.exec(text) ?? /\bpromo\s*code[:\s]+([A-Z0-9]{3,15})\b/i.exec(text);
+  return m ? m[1]!.toUpperCase() : null;
+}
+
+const MERCHANT_CATEGORY_TO_DEAL_CATEGORY: Record<string, DealCategory> = {
+  restaurant: "food_restaurant",
+  fast_casual: "fast_casual",
+  pizza: "pizza_wings",
+  wings: "pizza_wings",
+  sushi: "food_restaurant",
+  coffee_boba: "coffee_cafe",
+  dessert: "dessert",
+  bar_nightlife: "bar_nightlife",
+  gym_fitness: "fitness",
+  yoga_pilates: "fitness",
+  pickleball: "fitness",
+  barber: "beauty_barber_nails",
+  hair_salon: "beauty_barber_nails",
+  nail_salon: "beauty_barber_nails",
+  tanning: "beauty_barber_nails",
+  bowling_arcade: "entertainment",
+  movie_theater: "entertainment",
+  escape_room: "entertainment",
+  entertainment_other: "entertainment",
+  student_housing: "housing",
+  car_wash_auto: "retail_services",
+  retail: "retail_services",
+  tutoring_test_prep: "retail_services",
+  moving_storage: "retail_services",
+  other: "other",
+};
+
+function inferDealCategory(merchantCategory: string, text: string): DealCategory {
+  const fromMerchant = MERCHANT_CATEGORY_TO_DEAL_CATEGORY[merchantCategory];
+  if (fromMerchant) return fromMerchant;
+  if (/wing|pizza/i.test(text)) return "pizza_wings";
+  if (/coffee|boba|latte/i.test(text)) return "coffee_cafe";
+  if (/dessert|ice cream|donut/i.test(text)) return "dessert";
+  return "other";
+}
+
+/** True when the raw text has at least one concrete, actionable signal —
+ * a price, discount, BOGO, free item, or promo code — rather than generic
+ * marketing copy or a plain menu listing with no promo attached. */
+function looksLikeADeal(text: string): boolean {
+  return (
+    /\$\d/.test(text) ||
+    /%\s*off/i.test(text) ||
+    /\bbogo\b|\bbuy one get one\b/i.test(text) ||
+    /\bfree\b/i.test(text) ||
+    /\bcode[:\s]+[A-Z0-9]{3,15}\b/i.test(text)
+  );
 }
 
 /**
@@ -230,6 +320,73 @@ export class MockAIProvider implements AIProvider {
       is_duplicate: isDuplicate,
       confidence: sim,
       reasoning: `Title similarity ${sim.toFixed(2)}, same day: ${sameDay}.`,
+    };
+  }
+
+  async extractDeal(input: AnalyzeDealInput): Promise<ExtractedDeal> {
+    const text = input.rawText ?? "";
+    const isDeal = looksLikeADeal(text);
+
+    if (!isDeal) {
+      return {
+        is_deal: false,
+        title: null,
+        deal_category: null,
+        clean_offer_description: null,
+        normal_price: null,
+        deal_price: null,
+        discount_percent: null,
+        discount_dollars: null,
+        is_bogo: false,
+        is_free_item: false,
+        student_id_required: false,
+        promo_code: null,
+        valid_days_of_week: [],
+        start_date: null,
+        expiration_date: null,
+        start_time: null,
+        end_time: null,
+        recurring: false,
+        recurrence_pattern: null,
+        location_restrictions: null,
+        minimum_purchase: null,
+        eligibility: null,
+        confidence: 0.15,
+      };
+    }
+
+    const isBogo = /\bbogo\b|\bbuy one get one\b/i.test(text);
+    const isFreeItem = !isBogo && /\bfree\b/i.test(text);
+    const studentIdRequired = /student\s*id|university\s*id|with\s*(?:your\s*)?(?:valid\s*)?id/i.test(text);
+    const validDaysOfWeek = extractValidDaysOfWeek(text);
+    const recurring = validDaysOfWeek.length > 0 || /\bevery week\b|\bweekly\b|\bevery\s+(mon|tue|wed|thu|fri|sat|sun)/i.test(text);
+    const dealCategory = inferDealCategory(input.merchantCategory, text);
+    const titleSource = text.split(/[\n.!]/)[0]?.trim() || text.slice(0, 60).trim();
+
+    return {
+      is_deal: true,
+      title: titleSource || `${input.merchantName} deal`,
+      deal_category: dealCategory,
+      clean_offer_description: text.length > 10 ? text.slice(0, 280) : null,
+      normal_price: null,
+      deal_price: isBogo || isFreeItem ? null : extractDealPrice(text),
+      discount_percent: extractDiscountPercent(text),
+      discount_dollars: extractDiscountDollars(text),
+      is_bogo: isBogo,
+      is_free_item: isFreeItem,
+      student_id_required: studentIdRequired,
+      promo_code: extractPromoCode(text),
+      valid_days_of_week: validDaysOfWeek,
+      start_date: null,
+      expiration_date: null,
+      start_time: null,
+      end_time: null,
+      recurring,
+      recurrence_pattern: recurring && validDaysOfWeek.length > 0 ? "weekly" : null,
+      location_restrictions: null,
+      minimum_purchase: null,
+      eligibility: studentIdRequired ? "Valid student ID required" : null,
+      confidence: isBogo || isFreeItem || extractDealPrice(text) ? 0.75 : 0.5,
     };
   }
 }

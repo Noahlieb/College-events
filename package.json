@@ -13,11 +13,13 @@
     "lint": "pnpm -r lint",
     "db:migrate": "pnpm --filter @college-events/db migrate",
     "db:seed": "pnpm --filter @college-events/db seed",
+    "db:seed:deals": "pnpm --filter @college-events/db seed:deals",
     "db:reset": "pnpm --filter @college-events/db reset",
     "db:studio": "pnpm --filter @college-events/db studio",
     "worker": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker start",
     "dashboard": "pnpm --filter @college-events/dashboard dev",
     "demo": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker demo",
+    "deals:demo": "pnpm --filter \"@college-events/worker^...\" build && pnpm --filter @college-events/worker start deals:demo",
     "deploy:render-service": "pnpm --filter @college-events/worker... build && rm -rf .vercel && cp -r apps/render-service/.vercel .vercel && vercel --prod --yes",
     "deploy:dashboard": "pnpm --filter @college-events/dashboard... build && rm -rf .vercel && cp -r apps/dashboard/.vercel .vercel && vercel --prod --yes"
   },

@@ -18,6 +18,11 @@ import { backfillLanes } from "./pipeline/backfill-lanes.js";
 import { runDemo } from "./demo.js";
 import { eq } from "drizzle-orm";
 import { db, sources } from "@college-events/db";
+import { ingestUniversityMerchantSources } from "./deals-pipeline/ingest-merchant-sources.js";
+import { processUniversityDeals } from "./deals-pipeline/process-deals.js";
+import { generateWeeklyContentQueue } from "./deals-pipeline/generate-content-queue.js";
+import { approveDealContentPost, rejectDealContentPost } from "./deals-pipeline/approve.js";
+import { runDealsDemo } from "./deals-demo.js";
 
 const USAGE = `
 College Events worker CLI
@@ -53,7 +58,16 @@ Commands:
                                             the school's oldest manual_submission source.
   demo [school]                            Run the full pipeline end-to-end (defaults to FAU)
 
-[school] defaults to "FAU" and refers to schools.short_name.
+Deals product (spec: College Deals Intelligence System):
+  deals:ingest [university]                Change-detect every active merchant source
+  deals:process [university]               Extract/dedupe/score/classify pending deal_raw_content
+  deals:queue [university]                 Build the weekly content queue (Mon/Tue/Wed/Fri/Sun)
+  deals:approve <postId> <approvedBy>      Approve a deal content post for scheduling
+  deals:reject <postId> <reason> <rejectedBy>
+                                            Reject a deal content post
+  deals:demo [university]                  Run the full deals pipeline end-to-end (defaults to UCF)
+
+[school]/[university] defaults to "FAU"/"UCF" respectively and refers to schools.short_name.
 `;
 
 async function main() {
@@ -178,6 +192,39 @@ async function main() {
     }
     case "demo": {
       await runDemo(args[0] ?? "FAU");
+      break;
+    }
+    case "deals:ingest": {
+      const universityId = await resolveSchoolId(args[0] ?? "UCF");
+      console.log(await ingestUniversityMerchantSources(universityId));
+      break;
+    }
+    case "deals:process": {
+      const universityId = await resolveSchoolId(args[0] ?? "UCF");
+      console.log(await processUniversityDeals(universityId));
+      break;
+    }
+    case "deals:queue": {
+      const universityId = await resolveSchoolId(args[0] ?? "UCF");
+      console.table(await generateWeeklyContentQueue(universityId));
+      break;
+    }
+    case "deals:approve": {
+      const [postId, approvedBy] = args;
+      if (!postId || !approvedBy) throw new Error("Usage: deals:approve <postId> <approvedBy>");
+      await approveDealContentPost(postId, approvedBy);
+      console.log(`Deal content post ${postId} approved.`);
+      break;
+    }
+    case "deals:reject": {
+      const [postId, reason, rejectedBy] = args;
+      if (!postId || !reason || !rejectedBy) throw new Error("Usage: deals:reject <postId> <reason> <rejectedBy>");
+      await rejectDealContentPost(postId, reason, rejectedBy);
+      console.log(`Deal content post ${postId} rejected.`);
+      break;
+    }
+    case "deals:demo": {
+      await runDealsDemo(args[0] ?? "UCF");
       break;
     }
     default:

@@ -15,8 +15,48 @@ RELEVANCE SCORING → CATEGORY ASSIGNMENT → VERIFICATION → WEEKLY POST SELEC
 IMAGE/SLIDE GENERATION → CAPTION GENERATION → HUMAN APPROVAL → SCHEDULER → INSTAGRAM
 ```
 
+## Deals product (College Deals Intelligence System)
+
+A second content engine living in this same monorepo, alongside Events. It monitors
+businesses near a campus for fresh, time-sensitive deals (not generic nationwide
+student discounts), scores and deduplicates them, and assembles a weekly content
+queue (Monday top 5 / Tuesday deal / Wednesday local deal / Friday weekend deal /
+Sunday roundup). **First campus: UCF (Orlando, FL).** Same multi-tenant pattern as
+Events — every deals table carries a `university_id` (`schools.id`), so UCF, FAU,
+FSU, UF, USF, etc. all run on identical code.
+
+Full architecture, schema, scoring formula, merchant-discovery methodology, and
+risks: **[docs/DEALS_ARCHITECTURE.md](docs/DEALS_ARCHITECTURE.md)**.
+
+```bash
+pnpm db:seed:deals   # seed UCF: school row, ~34 merchants across food/fitness/
+                     # beauty/entertainment/housing, their monitored sources, and
+                     # 16 pending deal_raw_content rows for the demo below
+
+pnpm deals:demo      # change detection → AI extraction → dedup/fingerprint →
+                     # quality score → content eligibility → weekly content queue,
+                     # end-to-end, zero paid credentials (mock AI provider)
+```
+
+Individual pipeline stages (`pnpm --filter @college-events/worker start <command>`,
+or `pnpm worker <command>` from the repo root; `[university]` defaults to `UCF`):
+
+| Command | What it does |
+|---|---|
+| `deals:ingest [university]` | Change-detect every active, non-manual merchant source (hash-compare; unchanged pages never reach the LLM) |
+| `deals:process [university]` | AI-extract pending changes → fingerprint/dedupe → freshness → 0-100 quality score → feed/story/evergreen/reject |
+| `deals:queue [university]` | Build/refresh this week's content queue from feed/story-eligible deals |
+| `deals:approve <postId> <approvedBy>` | Human approval gate — nothing is ever auto-published |
+| `deals:reject <postId> <reason> <rejectedBy>` | Reject a proposed post |
+
+Dashboard: `/deals` (per-university summary — new today, feed-worthy, story-worthy,
+expiring soon, needs verification, active merchants, source failures — with filters
+by category/freshness/merchant/score) and `/deals/queue` (this week's proposed
+posts, with Approve/Reject).
+
 ## Table of contents
 
+- [Deals product (College Deals Intelligence System)](#deals-product-college-deals-intelligence-system)
 - [Architecture](#architecture)
 - [Project layout](#project-layout)
 - [Local setup](#local-setup)
