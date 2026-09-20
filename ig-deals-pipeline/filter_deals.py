@@ -301,7 +301,27 @@ def process(posts):
     return kept, skipped_dupe, skipped_weak, skipped_noise
 
 
+def load_existing_deals():
+    """Whatever the review queue already held before this run. The seen-store
+    stops the SAME underlying post from being re-added on a future scrape;
+    it's not meant to shrink the queue just because this particular run found
+    fewer brand-new posts than a previous one did. Without this merge, running
+    filter_deals.py twice in a row (or a cron re-run before you've reviewed
+    yesterday's queue) would silently overwrite deals_clean.json/deals_data.js
+    with near-nothing, even though nothing was actually wrong."""
+    if not config.DEALS_CLEAN_JSON.exists():
+        return []
+    try:
+        return json.loads(config.DEALS_CLEAN_JSON.read_text()).get("deals", [])
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
 def write_outputs(records):
+    by_id = {r["id"]: r for r in load_existing_deals()}
+    by_id.update({r["id"]: r for r in records})
+    records = list(by_id.values())
+
     by_campus = {}
     for r in records:
         by_campus.setdefault(r["campus"], []).append(r)
@@ -333,6 +353,7 @@ def write_outputs(records):
         js_records, indent=2
     ) + ";\n"
     config.DEALS_REVIEW_JS.write_text(js)
+    return len(records)
 
 
 def load_posts(src_arg):
@@ -361,7 +382,7 @@ def main():
     srcs, posts = load_posts(src_arg)
 
     kept, dupes, weak, noise = process(posts)
-    write_outputs(kept)
+    total_queue = write_outputs(kept)
 
     by_campus = {}
     for r in kept:
@@ -369,14 +390,16 @@ def main():
 
     print(f"read {len(srcs)} file(s): {', '.join(s.name for s in srcs)}")
     print(f"scanned {len(posts)} posts")
-    print(f"  kept {len(kept)} new deals")
+    print(f"  kept {len(kept)} new deals this run")
     print(f"  skipped {dupes} duplicates / reposts")
     print(f"  skipped {weak} non-deals (below score threshold)")
     if noise:
         print(f"  skipped {sum(noise.values())} noise: " + ", ".join(f"{k}={v}" for k, v in sorted(noise.items())))
     if by_campus:
-        print("  by campus: " + ", ".join(f"{k}={v}" for k, v in sorted(by_campus.items())))
-    print(f"\nwrote {config.DEALS_CLEAN_JSON}")
+        print("  by campus (new this run): " + ", ".join(f"{k}={v}" for k, v in sorted(by_campus.items())))
+    print(f"\n{total_queue} deal(s) total in the review queue (including any from earlier runs "
+          f"you haven't approved/skipped yet).")
+    print(f"wrote {config.DEALS_CLEAN_JSON}")
     print(f"wrote {config.DEALS_REVIEW_JS}  (open deal_approval.html next)")
 
 
