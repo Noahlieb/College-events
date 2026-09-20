@@ -30,6 +30,21 @@ APPROVED_DEALS_JSON = BASE_DIR / "approved_deals.json"
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
+# A key pasted through a "smart text" app (Notes, Pages, Word, some browsers)
+# can silently pick up a curly quote/dash or invisible character in place of
+# a plain one, turning it into a string that LOOKS right when displayed but
+# fails every single API call the same way (a confusing thing to debug from
+# the error alone, since it looks like a per-request failure). Catch it here
+# instead, once, loudly, at import time.
+if OPENAI_API_KEY and not OPENAI_API_KEY.isascii():
+    print(
+        "WARNING: OPENAI_API_KEY in .env contains non-ASCII characters -- every OpenAI API call "
+        "will fail with a confusing 'ascii codec can't encode' error until this is fixed. This "
+        "usually happens from pasting the key through a rich-text app that swaps straight "
+        "hyphens/quotes for curly ones. Re-copy it from platform.openai.com/api-keys into .env "
+        "using a plain-text editor (TextEdit in Plain Text mode, VS Code, or `nano .env`)."
+    )
+
 DISCOVERY_ACTOR = "data-slayer/instagram-keyword-posts-scraper"
 MONITOR_ACTOR = "apify/instagram-scraper"
 MONITOR_LOOKBACK = os.environ.get("MONITOR_LOOKBACK", "2 days")
