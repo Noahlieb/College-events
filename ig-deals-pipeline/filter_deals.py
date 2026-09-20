@@ -241,7 +241,7 @@ def make_id(pid, shortcode, business, caption):
 # ---------------------------------------------------------------------------
 def process(posts):
     seen_ids, seen_sigs = load_seen()
-    kept, skipped_dupe, skipped_weak = [], 0, 0
+    kept, skipped_dupe, skipped_weak, skipped_empty = [], 0, 0, 0
     skipped_noise = {}
 
     for post in posts:
@@ -252,6 +252,15 @@ def process(posts):
         hashtag_blob = stringify(get(post, "hashtags", default=[]))
         source_account = str(get(post, "ownerUsername", "username")).lower()
         queried_campus = post.get("_campus_queried")
+
+        if not caption and not pid and not shortcode:
+            # Not a real post -- some actor runs emit an account-level/error
+            # item (no id, no shortcode, no caption) instead of skipping a
+            # directUrl with nothing new. MIN_DEAL_SCORE=0 means the score
+            # gate no longer catches this, since an empty caption scores 0
+            # same as a real deal would if scoring were disabled.
+            skipped_empty += 1
+            continue
 
         score = deal_score(f"{caption} {hashtag_blob}")
         if score < MIN_DEAL_SCORE:
@@ -309,7 +318,7 @@ def process(posts):
         seen_sigs.add(sig)
 
     save_seen(seen_ids, seen_sigs)
-    return kept, skipped_dupe, skipped_weak, skipped_noise
+    return kept, skipped_dupe, skipped_weak, skipped_empty, skipped_noise
 
 
 def load_existing_deals():
@@ -392,7 +401,7 @@ def main():
     src_arg = sys.argv[1] if len(sys.argv) > 1 else None
     srcs, posts = load_posts(src_arg)
 
-    kept, dupes, weak, noise = process(posts)
+    kept, dupes, weak, empty, noise = process(posts)
     total_queue = write_outputs(kept)
 
     by_campus = {}
@@ -404,6 +413,8 @@ def main():
     print(f"  kept {len(kept)} new deals this run")
     print(f"  skipped {dupes} duplicates / reposts")
     print(f"  skipped {weak} non-deals (below score threshold)")
+    if empty:
+        print(f"  skipped {empty} empty/invalid items (no caption, no post id)")
     if noise:
         print(f"  skipped {sum(noise.values())} noise: " + ", ".join(f"{k}={v}" for k, v in sorted(noise.items())))
     if by_campus:
