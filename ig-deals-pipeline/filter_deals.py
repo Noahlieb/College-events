@@ -390,6 +390,13 @@ def load_existing_deals():
         deals = json.loads(config.DEALS_CLEAN_JSON.read_text()).get("deals", [])
     except (json.JSONDecodeError, OSError):
         return []
+    # Prune cached records that predate a validity check added later (e.g. the
+    # empty/invalid-item guard in process()) and would never have been kept
+    # under current rules. The merge in write_outputs() protects real deals
+    # from being lost across runs, but it also has no way to know a cached
+    # record was garbage in the first place -- it just carries it forward
+    # forever unless something re-checks it, which is what this does.
+    deals = [d for d in deals if d.get("caption") or d.get("business") or d.get("handle")]
     return [backfill_activity(d) for d in deals]
 
 
