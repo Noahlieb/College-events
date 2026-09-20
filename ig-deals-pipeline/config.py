@@ -57,7 +57,8 @@ CAMPUS = {
         "campus_patterns": [r"\bfau\b", r"florida atlantic", r"\bowls\b", r"boca raton", r"\bboca\b"],
         "location_terms": ["boca raton", "boca", "florida"],
         "deal_accounts": ["fau.events", "fau_owlperks", "faudining", "sgatfau"],
-        "search_queries": ["FAU student discount", "FAU students deal", "FAU student deal Boca Raton"],
+        "search_queries": ["FAU", "FAU deals", "FAU student discount", "FAU students deal",
+                           "FAU student deal Boca Raton"],
     },
     "FIU": {
         "name": "Florida International University",
@@ -72,7 +73,8 @@ CAMPUS = {
         "campus_patterns": [r"\bfiu\b", r"florida international", r"\bpanthers\b"],
         "location_terms": ["miami", "florida", "sweetwater"],
         "deal_accounts": [],  # TODO: add FIU deal-account handles
-        "search_queries": ["FIU student discount", "FIU students deal", "FIU student deal Miami"],
+        "search_queries": ["FIU", "FIU deals", "FIU student discount", "FIU students deal",
+                           "FIU student deal Miami"],
     },
     "FSU": {
         "name": "Florida State University",
@@ -87,7 +89,8 @@ CAMPUS = {
         "campus_patterns": [r"\bfsu\b", r"florida state", r"\bseminoles\b", r"\bnoles\b", r"tallahassee"],
         "location_terms": ["tallahassee", "florida"],
         "deal_accounts": [],  # TODO: add FSU deal-account handles
-        "search_queries": ["FSU student discount", "FSU students deal", "FSU student deal Tallahassee"],
+        "search_queries": ["FSU", "FSU deals", "FSU student discount", "FSU students deal",
+                           "FSU student deal Tallahassee"],
     },
     "UCF": {
         "name": "University of Central Florida",
@@ -102,7 +105,8 @@ CAMPUS = {
         "campus_patterns": [r"\bucf\b", r"central florida", r"\bknights\b", r"orlando"],
         "location_terms": ["orlando", "florida"],
         "deal_accounts": [],  # TODO: add UCF deal-account handles
-        "search_queries": ["UCF student discount", "UCF students deal", "UCF student deal Orlando"],
+        "search_queries": ["UCF", "UCF deals", "UCF student discount", "UCF students deal",
+                           "UCF student deal Orlando"],
     },
     "USF": {
         "name": "University of South Florida",
@@ -117,7 +121,8 @@ CAMPUS = {
         "campus_patterns": [r"\busf\b", r"south florida", r"\bbulls\b", r"tampa"],
         "location_terms": ["tampa", "florida"],
         "deal_accounts": [],  # TODO: add USF deal-account handles
-        "search_queries": ["USF student discount", "USF students deal", "USF student deal Tampa"],
+        "search_queries": ["USF", "USF deals", "USF student discount", "USF students deal",
+                           "USF student deal Tampa"],
     },
     "UM": {
         "name": "University of Miami",
@@ -132,7 +137,8 @@ CAMPUS = {
         "campus_patterns": [r"\bum\b", r"university of miami", r"\bhurricanes\b", r"\bcanes\b", r"coral gables"],
         "location_terms": ["coral gables", "miami", "florida"],
         "deal_accounts": [],  # TODO: add University of Miami deal-account handles
-        "search_queries": ["University of Miami student discount", "UM Hurricanes student deal Coral Gables"],
+        "search_queries": ["University of Miami", "University of Miami deals", "Miami Hurricanes deals",
+                           "University of Miami student discount", "UM Hurricanes student deal Coral Gables"],
     },
 }
 
