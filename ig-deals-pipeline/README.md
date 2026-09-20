@@ -60,16 +60,44 @@ python3 run_pipeline.py refresh
 
 ### Stage 1 — scrape.py
 
-- **Discovery**: `data-slayer/instagram-keyword-posts-scraper`, keyword
-  search per campus (`config.py` → `search_queries`). Finds new deal-posting
-  accounts you don't already follow.
-- **Monitoring**: `apify/instagram-scraper`, `directUrls` of each campus's
-  known deal accounts, `resultsType: "posts"`, `onlyPostsNewerThan` (default
-  2 days, `MONITOR_LOOKBACK` in `.env`) so daily runs stay incremental/cheap.
+Two Apify Actors, run separately because they do different jobs:
+
+- **Discovery** — `data-slayer/instagram-keyword-posts-scraper`. Keyword/
+  caption search per campus (`config.py` → `search_queries`), input
+  `{"searchQueries": [...], "maxResultsPerQuery": N}`. No login needed;
+  returns full captions, username, likes, image URL. This is what finds
+  deal-posting businesses you don't already follow.
+- **Monitoring** — `apify/instagram-scraper`. `directUrls` of each campus's
+  known deal accounts, `resultsType: "posts"`, `resultsLimit`,
+  `onlyPostsNewerThan` (default 2 days, `MONITOR_LOOKBACK` in `.env`) so
+  daily runs stay incremental and cheap — roughly $0.0027/result on the free
+  tier. This actor's `search` + `searchType: "hashtag"` mode returns hashtag
+  *metadata*, not a post feed, and is never used here.
 - Every raw item is tagged `_campus_queried` / `_source` so Stage 2 can catch
-  wrong-campus results.
-- Community actors change their input schema occasionally — if a run fails,
-  check the actor's Input tab in the Apify Console against `scrape.py`.
+  wrong-campus results. Output is one file per campus per day —
+  `data/raw/<campus>_<date>.json`, discovery + monitor merged — which
+  `filter_deals.py` reads by default (all of today's campus files at once).
+- **Field names are unverified against a live schema fetch** — this was
+  built inside a sandbox where both `api.apify.com` and `apify.com` are
+  blocked by network policy, so the actor input fields above come from the
+  account owner's own live-tested usage, not an automated schema check.
+  `scrape.py` starts each run explicitly (rather than using the SDK's
+  fire-and-forget `.call()` helper) and surfaces Apify's own input-validation
+  error verbatim if a field name is wrong, so a mismatch fails loudly on the
+  first small test run instead of silently returning nothing.
+  `python scrape.py --describe-actors` does a free best-effort dump of
+  whatever input-schema info the API exposes, as a second check.
+- Defaults are intentionally small (`--discovery-limit 5 --monitor-limit
+  10`) — **run the first real scrape on one campus** (`--campus FAU`) and
+  read the per-actor post counts it logs before scaling up to all six.
+
+**A ToS note, not a blocker:** discovery pulls captions from accounts you
+don't run or have a relationship with, which sits in a gray area under
+Instagram's Terms of Service — keep queries targeted and volume reasonable.
+Monitoring your own campus accounts is lower risk since it's your own
+network. Apify's actors operate in that same gray area; that tradeoff is
+yours to weigh, this code doesn't enforce or warn about it at runtime beyond
+what's written here.
 
 ### Stage 2 — filter_deals.py
 
@@ -145,16 +173,6 @@ Buffer/Later/Metricool or the Instagram Graph API here next.
 This runs Stages 1–2 only (scrape + filter) — approval and generation stay
 manual so you keep a human in the loop before anything goes out, per the
 original design.
-
-## A heads-up, not a blocker
-
-Discovery (Stage 1) pulls captions from accounts you don't run or have a
-relationship with, to find deals you can repost. Instagram's Terms of Service
-generally prohibit automated scraping, and Apify's actors operate in that
-same gray area — that's on you to weigh, not something this code enforces or
-warns about at runtime. Keep the monitoring pass (your own campus accounts)
-as the reliable core, and treat discovery as best-effort lead generation you
-verify by hand before posting anyone else's deal as your own content.
 
 ## Project layout
 

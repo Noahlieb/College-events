@@ -14,8 +14,8 @@ core, plus:
     dashboard and Stage 4's flyer generator don't need their own parsing.
 
 Usage:
-    python filter_deals.py                     # reads data/raw/latest.json
-    python filter_deals.py path/to/raw.json     # or any Apify export
+    python filter_deals.py                     # reads data/raw/*_<today>.json (all campuses scraped today)
+    python filter_deals.py path/to/raw.json     # or any single Apify export
 
 Outputs:
     data/deals_clean.json   # {"generated_at", "by_campus", "deals": [...]}
@@ -29,7 +29,7 @@ import json
 import re
 import sys
 import unicodedata
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import config
@@ -318,13 +318,30 @@ def write_outputs(records):
     config.DEALS_REVIEW_JS.write_text(js)
 
 
-def main():
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else config.RAW_DIR / "latest.json"
-    if not src.exists():
-        sys.exit(f"no input at {src} — run scrape.py first, or pass a raw Apify JSON export as an argument.")
+def load_posts(src_arg):
+    if src_arg:
+        srcs = [Path(src_arg)]
+        if not srcs[0].exists():
+            sys.exit(f"no input at {srcs[0]}")
+    else:
+        today = date.today().isoformat()
+        srcs = sorted(config.RAW_DIR.glob(f"*_{today}.json"))
+        if not srcs:
+            sys.exit(
+                f"no raw files for today ({today}) in {config.RAW_DIR} — "
+                f"run scrape.py first, or pass a raw Apify JSON export as an argument."
+            )
 
-    raw = json.loads(src.read_text())
-    posts = raw if isinstance(raw, list) else raw.get("items", raw.get("results", []))
+    posts = []
+    for src in srcs:
+        raw = json.loads(src.read_text())
+        posts += raw if isinstance(raw, list) else raw.get("items", raw.get("results", []))
+    return srcs, posts
+
+
+def main():
+    src_arg = sys.argv[1] if len(sys.argv) > 1 else None
+    srcs, posts = load_posts(src_arg)
 
     kept, dupes, weak, noise = process(posts)
     write_outputs(kept)
@@ -333,6 +350,7 @@ def main():
     for r in kept:
         by_campus[r["campus"]] = by_campus.get(r["campus"], 0) + 1
 
+    print(f"read {len(srcs)} file(s): {', '.join(s.name for s in srcs)}")
     print(f"scanned {len(posts)} posts")
     print(f"  kept {len(kept)} new deals")
     print(f"  skipped {dupes} duplicates / reposts")
