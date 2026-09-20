@@ -12,6 +12,10 @@ core, plus:
     scrape.py stamps on every raw item.
   - Dashboard-ready fields (hero/detail/meta/handle) so Stage 3's approval
     dashboard and Stage 4's flyer generator don't need their own parsing.
+  - Activity status (activity.py): every kept deal gets tagged active/
+    expired/unclear from an explicit date/weekday/duration in the caption
+    (or an LLM judgment call for genuinely ambiguous ones), so a 2020 Uber
+    promo and this week's BOGO don't look equally trustworthy.
 
 Usage:
     python filter_deals.py                     # reads data/raw/*_<today>.json (all campuses scraped today)
@@ -32,6 +36,7 @@ import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import activity
 import config
 
 # ---------------------------------------------------------------------------
@@ -130,6 +135,32 @@ def get(post, *keys, default=""):
         if k in post and post[k] not in (None, ""):
             return post[k]
     return default
+
+
+def extract_image_url(post):
+    """Best-effort image URL, whichever field the actor used. Unverified
+    across actors -- same network limitation as the field-name note in
+    scrape.py, so if this comes back empty on a real scrape, open
+    data/raw/<campus>_<date>.json, find the actual image key on a raw post,
+    and add it to the candidate list below."""
+    direct = get(post, "displayUrl", "imageUrl", "thumbnailUrl", "thumbnail", "photo", "picture")
+    if direct:
+        return direct
+    for key in ("images", "displayResources", "media"):
+        val = post.get(key)
+        if isinstance(val, list) and val:
+            first = val[0]
+            if isinstance(first, str):
+                return first
+            if isinstance(first, dict):
+                url = first.get("url") or first.get("src") or first.get("uri")
+                if url:
+                    return url
+        elif isinstance(val, dict):
+            url = val.get("url") or val.get("src") or val.get("uri")
+            if url:
+                return url
+    return ""
 
 
 def stringify(value):
@@ -292,6 +323,7 @@ def process(posts):
 
         posted = get(post, "timestamp", "takenAt", "postedAt")
         meta = addr.group(0).strip() if addr else (location or (f"Posted {posted}" if posted else ""))
+        activity_info = activity.assess_activity(caption, posted)
 
         record = {
             "id": rid,
@@ -308,9 +340,13 @@ def process(posts):
             "posted": posted,
             "likes": get(post, "likesCount", "likes", default=0),
             "url": get(post, "url", "postUrl") or (f"https://www.instagram.com/p/{shortcode}/" if shortcode else ""),
+            "image_url": extract_image_url(post),
             "deal_score": score,
             "caption": (caption or "").strip(),
             "source": post.get("_source", ""),
+            "activity_status": activity_info["status"],
+            "expires_on": activity_info["expires_on"],
+            "activity_note": activity_info["note"],
         }
         kept.append(record)
         if pid:
@@ -357,14 +393,19 @@ def write_outputs(records):
     csv_path = config.DATA_DIR / "deals_clean.csv"
     if records:
         cols = ["id", "campus", "business", "hero", "detail", "discount", "code", "address", "meta",
-                "handle", "source_account", "posted", "likes", "url", "deal_score", "caption", "source"]
+                "handle", "source_account", "posted", "likes", "url", "image_url", "deal_score", "caption",
+                "source", "activity_status", "expires_on", "activity_note"]
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=cols)
             w.writeheader()
             w.writerows(records)
 
+    # .get() with defaults, not r[k]: a merged-in record from before activity.py
+    # existed won't have these keys, and shouldn't crash the whole export over it.
+    js_keys = ("id", "campus", "hero", "business", "detail", "meta", "code", "handle", "url", "image_url",
+               "caption", "activity_status", "expires_on", "activity_note")
     js_records = [
-        {k: r[k] for k in ("id", "campus", "hero", "business", "detail", "meta", "code", "handle", "url", "caption")}
+        {k: r.get(k, "unclear" if k == "activity_status" else None if k == "expires_on" else "") for k in js_keys}
         for r in records
     ]
     # window.DEALS (not `const`) so deal_approval.html can detect a missing/failed

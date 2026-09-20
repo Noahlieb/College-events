@@ -121,6 +121,24 @@ Adapted from the original `ig_deals_filter.py`, plus:
 - **Dedup signature** — now `campus + first 10 normalized caption words`
   instead of `account + first 12 words`, for the same cross-account-repost
   reason above.
+- **Activity status** (`activity.py`) — every kept deal gets tagged
+  `active`/`expired`/`unclear` from an explicit end date, weekday cutoff,
+  "24 hours only", date range, or "every month"/"ongoing" language in the
+  caption, anchored to the post's own date (not today). No expiration
+  language and the post is more than `AGE_THRESHOLD_DAYS` (45) old →
+  `unclear`, which additionally gets one OpenAI call to make the final
+  judgment when `OPENAI_API_KEY` is set (regex alone can't reliably parse
+  every phrasing) — only spent on genuinely ambiguous cases, not every deal.
+  `deal_approval.html` hides `expired` deals from the queue by default (a
+  toggle shows them) and badges `unclear` ones "VERIFY" so you know to
+  double-check rather than trusting them blindly.
+- **Image preview** — pulls the post's real photo (`displayUrl`/`imageUrl`/
+  `images`/etc., whichever the actor used — field name unverified, same
+  caveat as scrape.py's; check a raw file in `data/raw/` and extend
+  `extract_image_url()` if it comes back empty) so `deal_approval.html` can
+  show the actual scraped photo behind the deal text instead of a plain
+  color card, without opening Instagram. A broken/expired image URL just
+  quietly falls back to the solid campus color.
 - Outputs `data/deals_clean.json` (+ `.csv`) and `data/deals_data.js`, which
   `deal_approval.html` loads directly.
 - `state/seen_posts.json` persists across runs — don't delete it, or you'll
@@ -185,6 +203,7 @@ ig-deals-pipeline/
   config.py            campus branding, handles, search queries, .env loading
   scrape.py             Stage 1
   filter_deals.py        Stage 2
+  activity.py             active/expired detection, used by filter_deals.py
   deal_approval.html     Stage 3
   generate_flyers.py     Stage 4
   run_pipeline.py        one-command orchestration (scrape/filter/generate/refresh/demo)

@@ -55,10 +55,16 @@
   .mini{font-weight:800;font-size:12.5px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:8px 13px;cursor:pointer}
   .mini.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
   .sample{position:absolute;top:10px;left:10px;z-index:5;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:800;padding:4px 9px;border-radius:6px;letter-spacing:.04em}
+  .badge-expired,.badge-unclear{display:inline-block;font-weight:800;font-size:10.5px;padding:2px 8px;border-radius:999px;letter-spacing:.03em;color:#fff;cursor:help}
+  .badge-expired{background:var(--no)}
+  .badge-unclear{background:#a9770a}
+  .hideExpiredToggle{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;margin:10px 0 0}
   .note{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);margin-top:14px}
 
   /* ---------- flyer interior (1080 space) — quick preview only, not the final Stage 4 flyer ---------- */
   .flyer .pad{position:absolute;inset:0;padding:78px 72px;display:flex;flex-direction:column}
+  .flyer .photo-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+  .flyer .photo-scrim{position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,rgba(0,0,0,.1) 0%,rgba(0,0,0,.55) 55%,rgba(0,0,0,.88) 100%)}
   .flyer .band{position:absolute;top:0;right:0;width:52%;height:100%;background:var(--accent);clip-path:polygon(38% 0,100% 0,100% 100%,0 100%);opacity:.16}
   .flyer .top{display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:2}
   .flyer .badge{font-family:'Anton';font-size:34px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:12px}
@@ -95,6 +101,7 @@
     <button class="tab" role="tab" data-view="queue" aria-selected="true">Review queue <b id="cQueue"></b></button>
     <button class="tab" role="tab" data-view="approved" aria-selected="false">Approved posts <b id="cApp"></b></button>
   </div>
+  <label class="hideExpiredToggle"><input type="checkbox" id="hideExpired" checked> Hide posts that look expired <span id="cExpired"></span></label>
 
   <div class="campnav" id="campnav"></div>
   <div class="grid" id="grid"></div>
@@ -123,7 +130,15 @@ let status = {};
 try{ status = JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ status={}; }
 const save = ()=>{ try{ localStorage.setItem(KEY,JSON.stringify(status)); }catch(e){} };
 
-let view='queue', campFilter='ALL';
+let view='queue', campFilter='ALL', hideExpired=true;
+
+function activityBadge(d){
+  const note=(d.activity_note||'').replace(/"/g,'&quot;');
+  if(d.activity_status==='expired') return `<span class="badge-expired" title="${note}">EXPIRED</span>`;
+  if(d.activity_status==='unclear') return `<span class="badge-unclear" title="${note}">VERIFY</span>`;
+  return '';
+}
+function passesActivityFilter(d){ return !hideExpired || d.activity_status!=='expired'; }
 
 function flyerHTML(d){
   const c=CAMPUS[d.campus]||CAMPUS.UNMATCHED;
@@ -131,7 +146,19 @@ function flyerHTML(d){
   const code=d.code?`<div class="code"><small>CODE</small>${d.code}</div>`:'';
   const meta=d.meta?`<div class="meta">${d.meta}</div>`:'';
   const tag=d.sample?`<span class="sample">SAMPLE</span>`:'';
+  // The real scraped photo, when we have one, so you can eyeball the post
+  // without leaving this page. A dark scrim keeps the overlaid text legible
+  // regardless of what's in the photo. Falls back to the solid campus-color
+  // background (as before) if the actor didn't return an image, or if the
+  // image URL has since expired/404s -- a real <img> (not a CSS
+  // background-image, which never fires onerror) so a broken link hides
+  // itself instead of showing a blank/broken box.
+  const bg = d.image_url
+    ? `<img class="photo-bg" src="${d.image_url.replace(/"/g,'&quot;')}" loading="lazy" onerror="this.remove()">
+       <div class="photo-scrim"></div>`
+    : '';
   return `${tag}<div class="flyer" style="--accent:${c.accent};background:${c.bg}">
+    ${bg}
     <div class="band"></div>
     <div class="pad">
       <div class="top"><div class="badge"><span class="dot"></span>${c.label} ${c.mascot}</div><div class="handle">${d.handle||''}</div></div>
@@ -144,10 +171,16 @@ function flyerHTML(d){
 function fit(stage){const f=stage.querySelector('.flyer');f.style.transform=`scale(${stage.clientWidth/1080})`;}
 
 function counts(){
-  let q=0,a=0;
-  DEALS.forEach(d=>{ const s=status[d.id]; if(s==='approved')a++; else if(s!=='rejected')q++; });
+  let q=0,a=0,hiddenExpired=0;
+  DEALS.forEach(d=>{
+    const s=status[d.id];
+    if(s==='approved'){a++;return;}
+    if(s==='rejected')return;
+    if(passesActivityFilter(d))q++; else hiddenExpired++;
+  });
   document.getElementById('cQueue').textContent=q;
   document.getElementById('cApp').textContent=a;
+  document.getElementById('cExpired').textContent=hiddenExpired?`(${hiddenExpired} hidden)`:'';
 }
 
 function renderCampnav(){
@@ -176,13 +209,13 @@ function render(){
   const list=DEALS.filter(d=>campFilter==='ALL'||d.campus===campFilter);
 
   if(view==='queue'){
-    const pend=list.filter(d=>{const s=status[d.id];return s!=='approved'&&s!=='rejected';});
-    if(!pend.length){grid.innerHTML='<div class="empty">Queue clear. Every deal here has been reviewed — check <b>Approved posts</b>.</div>';return;}
+    const pend=list.filter(d=>{const s=status[d.id];return s!=='approved'&&s!=='rejected'&&passesActivityFilter(d);});
+    if(!pend.length){grid.innerHTML='<div class="empty">Queue clear. Every deal here has been reviewed — check <b>Approved posts</b> (or uncheck "Hide posts that look expired" above).</div>';return;}
     pend.forEach(d=>{
       const el=document.createElement('div');el.className='review';
       el.innerHTML=`<div class="stage">${flyerHTML(d)}</div>
         <div class="rbody">
-          <div class="rttl">${d.business}</div>
+          <div class="rttl">${activityBadge(d)} ${d.business}</div>
           <div class="rmeta">${d.campus} · ${d.hero}${d.code?' · '+d.code:''}${d.url?` · <a href="${d.url}" target="_blank" rel="noopener">source ↗</a>`:''}</div>
           <div class="acts"><button class="rej" data-id="${d.id}" data-s="rejected">Skip</button>
           <button class="ok" data-id="${d.id}" data-s="approved">Approve →</button></div>
@@ -202,7 +235,7 @@ function render(){
       byC[c].forEach(d=>{
         const el=document.createElement('div');el.className='review post';
         el.innerHTML=`<div class="stage" id="st_${d.id}">${flyerHTML(d)}</div>
-          <div class="rbody"><div><div class="rttl">${d.business}</div>
+          <div class="rbody"><div><div class="rttl">${activityBadge(d)} ${d.business}</div>
           <div class="rmeta">${d.hero}${d.code?' · '+d.code:''}</div></div>
           <div style="display:flex;gap:8px"><button class="undo mini" data-id="${d.id}" data-s="queue">Undo</button>
           <button class="dl" data-shoot="${d.id}">Preview PNG</button></div></div>`;
@@ -282,6 +315,7 @@ document.getElementById('campnav').addEventListener('click',e=>{
 document.getElementById('reset').addEventListener('click',()=>{status={};save();render();});
 document.getElementById('exportApproved').addEventListener('click',exportApproved);
 document.getElementById('exportAll').addEventListener('click',exportAll);
+document.getElementById('hideExpired').addEventListener('change',e=>{hideExpired=e.target.checked;render();});
 window.addEventListener('resize',()=>document.querySelectorAll('.stage').forEach(fit));
 render();
 </script>

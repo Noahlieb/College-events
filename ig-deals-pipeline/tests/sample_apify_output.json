@@ -15,7 +15,8 @@
     "likesCount": 210,
     "url": "https://www.instagram.com/p/DcRSZ5ExLML/",
     "_campus_queried": "FAU",
-    "_source": "monitor"
+    "_source": "monitor",
+    "displayUrl": "https://scontent-mia3-1.cdninstagram.com/v/fake_example_faudining.jpg"
   },
   {
     "id": "3300000000002",
@@ -228,5 +229,37 @@
     "ownerUsername": "faudining",
     "_campus_queried": "FAU",
     "_source": "monitor"
+  },
+  {
+    "id": "3300000000014",
+    "shortCode": "ExpiredDeal1",
+    "caption": "50% off all pizzas! Deal closes September 1, 2026 -- dont miss out!",
+    "ownerUsername": "oldpizzaplace",
+    "ownerFullName": "Old Pizza Place",
+    "locationName": "Boca Raton, Florida",
+    "hashtags": [
+      "FAU"
+    ],
+    "timestamp": "2026-08-25T12:00:00.000Z",
+    "likesCount": 15,
+    "url": "https://www.instagram.com/p/ExpiredDeal1/",
+    "_campus_queried": "FAU",
+    "_source": "discovery"
+  },
+  {
+    "id": "3300000000015",
+    "shortCode": "OldUnclear1",
+    "caption": "Student ID gets you 20% off at Sunshine Cafe near FAU!",
+    "ownerUsername": "sunshinecafe",
+    "ownerFullName": "Sunshine Cafe",
+    "locationName": "Boca Raton, Florida",
+    "hashtags": [
+      "FAU"
+    ],
+    "timestamp": "2025-01-15T12:00:00.000Z",
+    "likesCount": 8,
+    "url": "https://www.instagram.com/p/OldUnclear1/",
+    "_campus_queried": "FAU",
+    "_source": "discovery"
   }
 ]
