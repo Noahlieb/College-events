@@ -86,6 +86,7 @@
     </div>
     <div class="btns">
       <button class="mini primary" id="exportApproved">Export approved_deals.json</button>
+      <button class="mini" id="exportAll">Export all posts</button>
       <button class="mini" id="reset">Reset decisions</button>
     </div>
   </div>
@@ -240,6 +241,27 @@ function exportApproved(){
     + `Move it into the ig-deals-pipeline/ project folder (overwriting the existing approved_deals.json) and run: python generate_flyers.py`;
 }
 
+function exportAll(){
+  const note = document.getElementById('exportNote');
+  if(!DEALS.length){
+    note.style.display='block';
+    note.textContent = 'No deals loaded yet — run scrape.py then filter_deals.py first.';
+    return;
+  }
+  const all = DEALS.map(d=>({...d, review_status: status[d.id]||'pending'}));
+  const blob = new Blob([JSON.stringify(all, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.download = 'all_deals.json';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  note.style.display='block';
+  const byCampus = {}; all.forEach(d=>byCampus[d.campus]=(byCampus[d.campus]||0)+1);
+  note.textContent = `Downloaded all_deals.json with all ${all.length} post(s) currently loaded `
+    + `(${Object.entries(byCampus).map(([c,n])=>`${c}=${n}`).join(', ')}), each tagged with its `
+    + `review_status (approved/rejected/pending). Same data as data/deals_clean.json on disk.`;
+}
+
 document.getElementById('grid').addEventListener('click',async e=>{
   const set=e.target.closest('[data-s]');
   if(set){const id=set.dataset.id;const s=set.dataset.s;
@@ -259,6 +281,7 @@ document.getElementById('campnav').addEventListener('click',e=>{
 });
 document.getElementById('reset').addEventListener('click',()=>{status={};save();render();});
 document.getElementById('exportApproved').addEventListener('click',exportApproved);
+document.getElementById('exportAll').addEventListener('click',exportAll);
 window.addEventListener('resize',()=>document.querySelectorAll('.stage').forEach(fit));
 render();
 </script>
