@@ -111,6 +111,14 @@ Adapted from the original `ig_deals_filter.py`, plus:
   Universität Erlangen-Nürnberg (also "FAU"), any post skewing German-language
   with no Florida location hint, and any post whose content clearly names a
   *different* Florida campus than the one queried (`wrong_campus_for_query`).
+- **Campus routing by weighted score, not first match** — a cross-posted
+  flyer that hashtags several schools at once (e.g. a party flyer tagged
+  "#fiu #fau #umiami" for reach) used to route to whichever campus happened
+  to be checked first, regardless of which one the post was actually about.
+  Every campus is now scored by pattern hits, with a concrete address/city
+  match (`location_terms`) weighted 2x over a name/hashtag mention, since
+  it's a much stronger signal — a Sweetwater, FL address wins over an
+  incidental "#fau" hashtag.
 - **Owned-account filtering** — drops any post from your own accounts
   (`config.py` → `OWNED_ACCOUNTS`: the umbrella `college.events` page plus
   the six per-campus pages, e.g. `fau.events`) before it ever reaches the

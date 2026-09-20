@@ -79,6 +79,10 @@ RE_HASHTAG = re.compile(r"#\w+")
 CAMPUS_PATTERNS = {
     c: [re.compile(p, re.I) for p in cfg["campus_patterns"]] for c, cfg in config.CAMPUS.items()
 }
+LOCATION_PATTERNS = {
+    c: [re.compile(rf"\b{re.escape(term)}\b", re.I) for term in cfg["location_terms"]]
+    for c, cfg in config.CAMPUS.items()
+}
 
 # --- Noise filtering: wrong "FAU" (and friends), non-Florida results -------
 GERMAN_UNIVERSITY_TERMS = re.compile(
@@ -192,11 +196,23 @@ def deal_score(caption):
 
 
 def detect_campus_by_content(*texts):
+    """Score every campus by pattern hits rather than returning the first
+    match. A cross-posted flyer can legitimately hashtag several schools at
+    once (e.g. "#fiu #fau #umiami" on a multi-campus party flyer) -- picking
+    whichever campus happened to be checked first gave wrong, arbitrary
+    results. A concrete address/city match (location_terms) is a much
+    stronger signal than a name/hashtag mention, so it's weighted 2x."""
     blob = " ".join(t for t in texts if t)
+    scores = {}
     for campus, patterns in CAMPUS_PATTERNS.items():
-        if any(p.search(blob) for p in patterns):
-            return campus
-    return "UNMATCHED"
+        name_hits = sum(1 for p in patterns if p.search(blob))
+        loc_hits = sum(1 for p in LOCATION_PATTERNS[campus] if p.search(blob))
+        total = name_hits + 2 * loc_hits
+        if total:
+            scores[campus] = total
+    if not scores:
+        return "UNMATCHED"
+    return max(scores.items(), key=lambda kv: kv[1])[0]
 
 
 def extract_discount(caption):
