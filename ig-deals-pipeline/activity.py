@@ -72,6 +72,20 @@ TODAY_ONLY_RE = re.compile(r"\btoday\s+only\b", re.I)
 THIS_WEEKEND_RE = re.compile(r"\bthis\s+weekend\b", re.I)
 THIS_WEEK_RE = re.compile(r"\bthis\s+week\b", re.I)
 
+# Gates the LLM fallback: only worth spending a call when the caption has
+# SOME date-like token our regexes might have mis-parsed (an odd date
+# format, an unusual duration phrase). A caption with zero month names,
+# weekday names, digits-as-dates, or duration words has no extra signal for
+# an LLM to find either -- it would just be guessing from genre/tone (e.g.
+# reading a March open-house invite with no date in it as "sounds ongoing"),
+# which silently overrides the age-heuristic's deliberately conservative
+# "verify this" flag with a confident-sounding but unfounded "active".
+TEMPORAL_HINT_RE = re.compile(
+    rf"\b({MONTHS_PAT}|{WEEKDAYS_PAT}|today|tonight|tomorrow|hours?|days?|weeks?|"
+    rf"deadline|expir\w*|closes?|ends?|through|thru|until|til)\b|\d{{1,2}}[/-]\d{{1,2}}",
+    re.I,
+)
+
 ACTIVITY_MODEL = os.environ.get("OPENAI_ACTIVITY_MODEL", "gpt-4o-mini")
 
 
@@ -225,7 +239,7 @@ def assess_activity(caption, posted_iso, now=None):
             result = {"status": "active", "expires_on": None, "basis": "none",
                       "note": "recent post, no expiration language found"}
 
-    if result["status"] == "unclear" and config.OPENAI_API_KEY:
+    if result["status"] == "unclear" and config.OPENAI_API_KEY and TEMPORAL_HINT_RE.search(caption):
         try:
             return assess_activity_llm(caption, posted.isoformat() if posted else None, now.date().isoformat())
         except Exception:
