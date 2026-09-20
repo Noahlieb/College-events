@@ -272,7 +272,7 @@ def make_id(pid, shortcode, business, caption):
 # ---------------------------------------------------------------------------
 def process(posts):
     seen_ids, seen_sigs = load_seen()
-    kept, skipped_dupe, skipped_weak, skipped_empty = [], 0, 0, 0
+    kept, skipped_dupe, skipped_weak, skipped_empty, skipped_own = [], 0, 0, 0, 0
     skipped_noise = {}
 
     for post in posts:
@@ -281,8 +281,14 @@ def process(posts):
         caption = stringify(get(post, "caption", "text", "captionText"))
         location = stringify(get(post, "locationName", "location"))
         hashtag_blob = stringify(get(post, "hashtags", default=[]))
-        source_account = str(get(post, "ownerUsername", "username")).lower()
+        source_account = str(get(post, "ownerUsername", "username")).lower().lstrip("@")
         queried_campus = post.get("_campus_queried")
+
+        if source_account in config.OWNED_ACCOUNTS:
+            # Your own posting account -- discovery can surface it same as
+            # any other account, but it's not a third-party deal to review.
+            skipped_own += 1
+            continue
 
         if not caption and not pid and not shortcode:
             # Not a real post -- some actor runs emit an account-level/error
@@ -354,7 +360,7 @@ def process(posts):
         seen_sigs.add(sig)
 
     save_seen(seen_ids, seen_sigs)
-    return kept, skipped_dupe, skipped_weak, skipped_empty, skipped_noise
+    return kept, skipped_dupe, skipped_weak, skipped_empty, skipped_own, skipped_noise
 
 
 def backfill_activity(d):
@@ -397,6 +403,11 @@ def load_existing_deals():
     # record was garbage in the first place -- it just carries it forward
     # forever unless something re-checks it, which is what this does.
     deals = [d for d in deals if d.get("caption") or d.get("business") or d.get("handle")]
+    # Same reasoning for OWNED_ACCOUNTS -- a post from your own account that
+    # got cached before this exclude list existed (or before you added a
+    # handle to it) shouldn't stick around in the queue just because it's
+    # already there.
+    deals = [d for d in deals if (d.get("source_account") or "").lower().lstrip("@") not in config.OWNED_ACCOUNTS]
     return [backfill_activity(d) for d in deals]
 
 
@@ -469,7 +480,7 @@ def main():
     src_arg = sys.argv[1] if len(sys.argv) > 1 else None
     srcs, posts = load_posts(src_arg)
 
-    kept, dupes, weak, empty, noise = process(posts)
+    kept, dupes, weak, empty, own, noise = process(posts)
     total_queue = write_outputs(kept)
 
     by_campus = {}
@@ -483,6 +494,8 @@ def main():
     print(f"  skipped {weak} non-deals (below score threshold)")
     if empty:
         print(f"  skipped {empty} empty/invalid items (no caption, no post id)")
+    if own:
+        print(f"  skipped {own} posts from your own account(s): {', '.join(sorted(config.OWNED_ACCOUNTS))}")
     if noise:
         print(f"  skipped {sum(noise.values())} noise: " + ", ".join(f"{k}={v}" for k, v in sorted(noise.items())))
     if by_campus:

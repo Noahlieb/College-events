@@ -261,5 +261,21 @@
     "url": "https://www.instagram.com/p/OldUnclear1/",
     "_campus_queried": "FAU",
     "_source": "discovery"
+  },
+  {
+    "id": "3300000000016",
+    "shortCode": "OwnPost1",
+    "caption": "20% off at Some Business for FAU students, brought to you by us!",
+    "ownerUsername": "college.events",
+    "ownerFullName": "College Events",
+    "locationName": "Boca Raton, Florida",
+    "hashtags": [
+      "FAU"
+    ],
+    "timestamp": "2026-09-19T12:00:00.000Z",
+    "likesCount": 5,
+    "url": "https://www.instagram.com/p/OwnPost1/",
+    "_campus_queried": "FAU",
+    "_source": "discovery"
   }
 ]

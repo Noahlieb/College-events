@@ -111,6 +111,11 @@ Adapted from the original `ig_deals_filter.py`, plus:
   Universität Erlangen-Nürnberg (also "FAU"), any post skewing German-language
   with no Florida location hint, and any post whose content clearly names a
   *different* Florida campus than the one queried (`wrong_campus_for_query`).
+- **Owned-account filtering** — drops any post from your own account(s)
+  (`config.py` → `OWNED_ACCOUNTS`, seeded with `college.events`) before it
+  ever reaches the queue — your own posts aren't third-party deals to
+  review. Applies to new posts and prunes any already cached from before
+  the handle was added.
 - **Business-name extraction** — pulls the actual merchant name out of the
   caption text (`"... at Lyft Rides"`, `"[solidcore] Boca — ..."`) instead of
   using the posting account's own display name. This matters because the

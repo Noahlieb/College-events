@@ -167,3 +167,11 @@ ACCOUNT_CAMPUS = {
 def missing_handles():
     """Campuses that still need deal-account handles filled in."""
     return [c for c, cfg in CAMPUS.items() if not cfg["deal_accounts"]]
+
+
+# Your own posting account(s) -- discovery can surface these same as any
+# other account, but a post you made yourself isn't a third-party deal to
+# review/repost. filter_deals.py drops any post whose source account is in
+# this list (case-insensitive, with or without a leading "@"). Add more
+# handles here as you launch per-campus accounts.
+OWNED_ACCOUNTS = {"college.events"}
