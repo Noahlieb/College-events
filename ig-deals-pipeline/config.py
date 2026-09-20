@@ -71,7 +71,7 @@ CAMPUS = {
         "label": "FAU DEALS",
         "campus_patterns": [r"\bfau\b", r"florida atlantic", r"\bowls\b", r"boca raton", r"\bboca\b"],
         "location_terms": ["boca raton", "boca", "florida"],
-        "deal_accounts": ["fau.events", "fau_owlperks", "faudining", "sgatfau"],
+        "deal_accounts": ["fau_owlperks", "faudining", "sgatfau"],  # fau.events is your own -- see OWNED_ACCOUNTS below
         "search_queries": gen_queries("FAU", extra=["FAU student deal Boca Raton"]),
     },
     "FIU": {
@@ -169,9 +169,12 @@ def missing_handles():
     return [c for c, cfg in CAMPUS.items() if not cfg["deal_accounts"]]
 
 
-# Your own posting account(s) -- discovery can surface these same as any
-# other account, but a post you made yourself isn't a third-party deal to
-# review/repost. filter_deals.py drops any post whose source account is in
-# this list (case-insensitive, with or without a leading "@"). Add more
-# handles here as you launch per-campus accounts.
-OWNED_ACCOUNTS = {"college.events"}
+# Your own posting account(s) -- the umbrella page plus one per-campus page
+# per school. Discovery can surface these same as any other account, but a
+# post you made yourself isn't a third-party deal to review/repost.
+# filter_deals.py drops any post whose source account is in this list
+# (case-insensitive, with or without a leading "@").
+OWNED_ACCOUNTS = {
+    "college.events",
+    "fau.events", "fiu.events", "fsu.events", "ucf.events", "usf.events", "umiami.events",
+}
