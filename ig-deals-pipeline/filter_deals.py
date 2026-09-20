@@ -357,6 +357,25 @@ def process(posts):
     return kept, skipped_dupe, skipped_weak, skipped_empty, skipped_noise
 
 
+def backfill_activity(d):
+    """Records written before activity.py existed (or before any future
+    field gets added the same way) get preserved as-is by the merge in
+    write_outputs() -- they're never re-run through process() again once
+    seen_posts.json marks them seen, so they'd otherwise be stuck without
+    the new field forever. Since caption + posted are already stored on the
+    cached record itself, this recomputes activity_status right here with no
+    need to re-scrape or clear the seen-store. image_url can't be backfilled
+    this way -- the raw post object isn't cached, only these derived
+    fields -- so an old record missing a photo needs an actual re-scrape."""
+    if "activity_status" not in d:
+        info = activity.assess_activity(d.get("caption", ""), d.get("posted"))
+        d["activity_status"] = info["status"]
+        d["expires_on"] = info["expires_on"]
+        d["activity_note"] = info["note"]
+    d.setdefault("image_url", "")
+    return d
+
+
 def load_existing_deals():
     """Whatever the review queue already held before this run. The seen-store
     stops the SAME underlying post from being re-added on a future scrape;
@@ -368,9 +387,10 @@ def load_existing_deals():
     if not config.DEALS_CLEAN_JSON.exists():
         return []
     try:
-        return json.loads(config.DEALS_CLEAN_JSON.read_text()).get("deals", [])
+        deals = json.loads(config.DEALS_CLEAN_JSON.read_text()).get("deals", [])
     except (json.JSONDecodeError, OSError):
         return []
+    return [backfill_activity(d) for d in deals]
 
 
 def write_outputs(records):
