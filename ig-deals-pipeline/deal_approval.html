@@ -61,6 +61,28 @@
   .hideExpiredToggle{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:var(--muted);cursor:pointer;margin:10px 0 0}
   .note{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted);margin-top:14px}
 
+  /* ---------- generate-flyer modal ---------- */
+  .genbtn{background:#6d3fd1!important}
+  .modal-overlay{position:fixed;inset:0;background:rgba(5,7,12,.72);display:flex;align-items:flex-start;justify-content:center;
+                 padding:30px 14px;overflow-y:auto;z-index:50}
+  .modal-overlay.hidden{display:none}
+  .modal{background:var(--card);border-radius:18px;max-width:1080px;width:100%;padding:22px;margin-top:10px}
+  .modal h2{font-size:19px;font-weight:900;letter-spacing:-.01em}
+  .modal .msub{color:var(--muted);font-size:13px;margin-top:4px}
+  .modal .mclose{float:right;font-weight:800;font-size:13px;border:1.5px solid var(--line);background:var(--card);
+                 color:var(--ink);border-radius:999px;padding:7px 14px;cursor:pointer}
+  .modal .state{padding:40px 10px;text-align:center;color:var(--muted);font-weight:700}
+  .optgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;margin-top:16px}
+  .optcard{border:1.5px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)}
+  .optcard img{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:#000}
+  .optcard .ostyle{font-size:11px;font-weight:800;color:var(--muted);padding:8px 10px 0;letter-spacing:.02em}
+  .optcard .ouse{width:calc(100% - 20px);margin:10px;font-weight:800;font-size:12.5px;border:none;border-radius:10px;
+                 padding:9px;cursor:pointer;background:var(--ink);color:var(--paper)}
+  .optcard .ouse.saved{background:var(--go);color:#fff}
+  .modal .capbox{background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;
+                 font-size:12px;color:var(--ink);margin-top:16px;white-space:pre-wrap;max-height:160px;overflow-y:auto}
+  .modal .capbox b{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+
   /* ---------- flyer interior (1080 space) — quick preview only, not the final Stage 4 flyer ---------- */
   .flyer .pad{position:absolute;inset:0;padding:78px 72px;display:flex;flex-direction:column}
   .flyer .photo-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
@@ -106,6 +128,15 @@
   <div class="campnav" id="campnav"></div>
   <div class="grid" id="grid"></div>
   <p class="note" id="exportNote" style="display:none"></p>
+</div>
+
+<div class="modal-overlay hidden" id="genModal">
+  <div class="modal">
+    <button class="mclose" id="genClose">Close ✕</button>
+    <h2 id="genTitle">Generate flyer options</h2>
+    <p class="msub" id="genSub"></p>
+    <div id="genBody"></div>
+  </div>
 </div>
 
 <script>
@@ -237,8 +268,9 @@ function render(){
         el.innerHTML=`<div class="stage" id="st_${d.id}">${flyerHTML(d)}</div>
           <div class="rbody"><div><div class="rttl">${activityBadge(d)} ${d.business}</div>
           <div class="rmeta">${d.hero}${d.code?' · '+d.code:''}</div></div>
-          <div style="display:flex;gap:8px"><button class="undo mini" data-id="${d.id}" data-s="queue">Undo</button>
-          <button class="dl" data-shoot="${d.id}">Preview PNG</button></div></div>`;
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="undo mini" data-id="${d.id}" data-s="queue">Undo</button>
+          <button class="dl" data-shoot="${d.id}">Preview PNG</button>
+          <button class="dl genbtn" data-gen="${d.id}">✨ Generate</button></div></div>`;
         grid.appendChild(el);fit(el.querySelector('.stage'));
       });
     });
@@ -254,6 +286,72 @@ async function shoot(id){
   const a=document.createElement('a');a.download=(d.business.replace(/[^a-z0-9]+/gi,'_')+'_'+d.campus+'_preview.png');
   a.href=cv.toDataURL('image/png');a.click();
 }
+
+const genModal=document.getElementById('genModal');
+const genBody=document.getElementById('genBody');
+const genTitle=document.getElementById('genTitle');
+const genSub=document.getElementById('genSub');
+
+function openGenerateModal(id){
+  const d=DEALS.find(x=>x.id===id);if(!d)return;
+  genModal.classList.remove('hidden');
+  genTitle.textContent=`Generate flyer options — ${d.business}`;
+  genSub.textContent=`${d.campus} · ${d.hero}${d.code?' · '+d.code:''}`;
+
+  if(location.protocol==='file:'){
+    genBody.innerHTML=`<div class="state">This page was opened directly as a file, so it can't reach the
+      OpenAI API safely (that would need your API key exposed in this page's JS).<br><br>
+      Run <code>python3 server.py</code> in the ig-deals-pipeline folder instead, then open
+      <code>http://localhost:5000/</code> and try Generate again.</div>`;
+    return;
+  }
+
+  genBody.innerHTML='<div class="state">Generating 5 flyer options… this can take up to a minute.</div>';
+  fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})
+    .then(r=>r.json().then(data=>({ok:r.ok,data})))
+    .then(({ok,data})=>{
+      if(!ok||data.error){
+        genBody.innerHTML=`<div class="state">Generation failed: ${(data.error||'unknown error').replace(/</g,'&lt;')}</div>`;
+        return;
+      }
+      renderGenOptions(d,data.options,data.used_ai);
+    })
+    .catch(err=>{
+      genBody.innerHTML=`<div class="state">Couldn't reach the local server (${String(err).replace(/</g,'&lt;')}).<br><br>
+        Make sure <code>python3 server.py</code> is running and you opened this page at
+        <code>http://localhost:5000/</code>.</div>`;
+    });
+}
+
+function renderGenOptions(d,options,usedAi){
+  const note=usedAi?'':'<div class="msub">No OPENAI_API_KEY set on the server — these are placeholder composites, not real AI flyers.</div>';
+  const cards=options.map((opt,i)=>`
+    <div class="optcard">
+      <img src="data:image/png;base64,${opt.image_b64}" alt="option ${i+1}">
+      <div class="ostyle">${opt.style||('Option '+(i+1))}</div>
+      <button class="ouse" data-opt="${i}">Use this one</button>
+    </div>`).join('');
+  genBody.innerHTML=`${note}<div class="optgrid">${cards}</div>
+    <div class="capbox"><b>Caption (shared across options)</b>${(options[0]?.caption||'').replace(/</g,'&lt;')}</div>`;
+
+  genBody.querySelectorAll('[data-opt]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const opt=options[+btn.dataset.opt];
+      btn.textContent='Saving…';btn.disabled=true;
+      fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({deal:d,image_b64:opt.image_b64,caption:opt.caption})})
+        .then(r=>r.json())
+        .then(res=>{
+          if(res.saved){btn.textContent='Saved ✓';btn.classList.add('saved');}
+          else{btn.textContent='Failed';btn.disabled=false;}
+        })
+        .catch(()=>{btn.textContent='Failed';btn.disabled=false;});
+    });
+  });
+}
+
+document.getElementById('genClose').addEventListener('click',()=>genModal.classList.add('hidden'));
+genModal.addEventListener('click',e=>{if(e.target===genModal)genModal.classList.add('hidden');});
 
 function exportApproved(){
   const approved = DEALS.filter(d=>status[d.id]==='approved');
@@ -300,6 +398,7 @@ document.getElementById('grid').addEventListener('click',async e=>{
   if(set){const id=set.dataset.id;const s=set.dataset.s;
     if(s==='queue')delete status[id];else status[id]=s;save();render();return;}
   const sh=e.target.closest('[data-shoot]');if(sh){shoot(sh.dataset.shoot);return;}
+  const gen=e.target.closest('[data-gen]');if(gen){openGenerateModal(gen.dataset.gen);return;}
   const all=e.target.closest('[data-all]');if(all){
     const ids=DEALS.filter(d=>d.campus===all.dataset.all&&status[d.id]==='approved').map(d=>d.id);
     for(const id of ids){await shoot(id);await new Promise(r=>setTimeout(r,350));}

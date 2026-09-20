@@ -36,6 +36,8 @@ import os
 import re
 import sys
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -106,14 +108,15 @@ def generate_ai_background(deal):
         n=1,
     )
     img_bytes = base64.b64decode(resp.data[0].b64_json)
-    from io import BytesIO
     return Image.open(BytesIO(img_bytes)).convert("RGB")
 
 
-def generate_placeholder_background(deal):
+def generate_placeholder_background(deal, variant_seed=None):
     """No-API-key fallback: a campus-brand gradient + diagonal accent band,
     echoing the approval dashboard's preview look. Lets Stage 4's Pillow
-    text-overlay logic be tested for free before you add OPENAI_API_KEY."""
+    text-overlay logic be tested for free before you add OPENAI_API_KEY.
+    `variant_seed` (e.g. a style name) nudges the diagonal angle so the 5
+    offline demo options at least look distinct from one another."""
     c = config.CAMPUS.get(deal["campus"], config.CAMPUS["FAU"])
     w, h = 1024, 1536
     bg = tuple(int(c["bg"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
@@ -121,7 +124,8 @@ def generate_placeholder_background(deal):
     img = Image.new("RGB", (w, h), bg)
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    draw.polygon([(w * 0.55, 0), (w, 0), (w, h), (w * 0.2, h)], fill=accent + (40,))
+    shift = ((sum(ord(ch) for ch in variant_seed) % 5) * 0.08) if variant_seed else 0
+    draw.polygon([(w * (0.55 + shift), 0), (w, 0), (w, h), (w * (0.2 + shift), h)], fill=accent + (40,))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     return img
 
@@ -204,22 +208,27 @@ def hex_to_rgb(h):
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def compose_flyer(deal, background):
-    c = config.CAMPUS.get(deal["campus"], config.CAMPUS["FAU"])
-    accent = hex_to_rgb(c["accent"])
-
-    # center-crop the generated portrait to the exact IG 4:5 spec
-    bw, bh = background.size
+def crop_to_final(img):
+    """Center-crop+resize any generated image to the exact IG 4:5 spec
+    (1080x1350). Shared by the background-only path (compose_flyer) and the
+    full-AI-flyer path (generate_full_flyer_ai)."""
+    bw, bh = img.size
     target_ratio = FINAL_W / FINAL_H
     if bw / bh > target_ratio:
         new_w = int(bh * target_ratio)
         left = (bw - new_w) // 2
-        background = background.crop((left, 0, left + new_w, bh))
+        img = img.crop((left, 0, left + new_w, bh))
     else:
         new_h = int(bw / target_ratio)
         top = (bh - new_h) // 2
-        background = background.crop((0, top, bw, top + new_h))
-    img = background.resize((FINAL_W, FINAL_H), Image.LANCZOS).convert("RGBA")
+        img = img.crop((0, top, bw, top + new_h))
+    return img.resize((FINAL_W, FINAL_H), Image.LANCZOS)
+
+
+def compose_flyer(deal, background):
+    c = config.CAMPUS.get(deal["campus"], config.CAMPUS["FAU"])
+    accent = hex_to_rgb(c["accent"])
+    img = crop_to_final(background).convert("RGBA")
 
     # dark gradient scrim over the bottom ~60% so white text stays legible
     # over whatever the AI background happens to put there
@@ -360,6 +369,138 @@ def get_caption(deal):
     except Exception as e:
         print(f"    !! caption API failed ({e}), using template caption instead")
         return template_caption(deal)
+
+
+# ---------------------------------------------------------------------------
+# STEP 5 — full AI-generated finished flyers (multi-option, for the dashboard's
+# "Generate" button). Unlike STEP 1/2 above, this asks the image model to
+# render the deal text directly, since gpt-image-1 (unlike older DALL-E
+# models) can render legible text and the dashboard needs finished-looking
+# posts, not a background-plus-overlay composite. STEP 1/2's Pillow path
+# stays in place as the CLI's exact-text-guaranteed default and as the
+# no-API-key offline fallback used here too.
+# ---------------------------------------------------------------------------
+STYLE_VARIANTS = [
+    {"name": "Bold Sticker Pop", "prompt": (
+        "Bold, punchy sticker-collage style like a viral streetwear drop -- thick white "
+        "outlined die-cut stickers, halftone dot textures, a few playful icon stickers "
+        "(fire, percent sign, star) scattered around, oversized chunky rounded lettering "
+        "for the headline, bright saturated school-color background."
+    )},
+    {"name": "Clean Editorial", "prompt": (
+        "Clean, premium editorial/magazine-ad layout -- generous whitespace, a crisp "
+        "photo of the featured food/item as the hero visual, refined modern sans-serif "
+        "typography, a thin accent-color rule line, minimal but confident, looks like a "
+        "high-end brand's Instagram ad."
+    )},
+    {"name": "Retro Halftone Comic", "prompt": (
+        "Retro comic-book / halftone poster style -- bold black outlines, halftone dot "
+        "shading, a starburst 'POW'-style callout behind the headline, warm vintage "
+        "color grading tinted with the school colors, playful energetic composition."
+    )},
+    {"name": "Neon Campus Nightlife", "prompt": (
+        "Neon nightlife / campus-event poster style -- dark moody background, glowing "
+        "neon-outline lettering and shapes in the school colors, subtle light-leak and "
+        "bokeh accents, high-energy club-flyer feel appropriate for a college audience."
+    )},
+    {"name": "Varsity Letterman", "prompt": (
+        "Varsity/athletic letterman style -- collegiate block lettering like a jersey "
+        "number, chevron stripe accents, a subtle stadium or brick-wall texture behind, "
+        "school mascot silhouette worked into a badge/crest shape, confident sporty look."
+    )},
+]
+
+
+def build_full_flyer_prompt(deal, variant):
+    c = config.CAMPUS.get(deal["campus"], config.CAMPUS["FAU"])
+    business = deal.get("business", "")
+    hero = (deal.get("hero") or "DEAL").upper()
+    detail = deal.get("detail", "")
+    code = deal.get("code", "")
+    meta = deal.get("meta", "")
+    handle = deal.get("handle", "")
+
+    text_block = f'- Business name, prominent: "{business}"\n'
+    text_block += f'- Big headline offer text, the largest element on the page: "{hero}"\n'
+    if detail:
+        text_block += f'- Supporting detail line: "{detail}"\n'
+    if code:
+        text_block += f'- A promo-code badge/sticker reading exactly: "CODE {code}"\n'
+    if meta:
+        text_block += f'- Small extra info line: "{meta}"\n'
+    text_block += '- A bottom banner/strip reading exactly: "SEND THIS TO YOUR GROUP CHAT"\n'
+    text_block += f'- Small campus label near the top: "{c["label"]}"\n'
+    if handle:
+        text_block += f'- The Instagram handle "{handle}" small, in a top corner\n'
+
+    return f"""Design a complete, FINISHED, ready-to-post Instagram flyer (portrait 4:5)
+advertising a student deal at {c['name']} ({c['team']}), school colors {c['colors']},
+with a subtle {c['mascot']} motif worked into the design.
+
+VISUAL STYLE FOR THIS OPTION: {variant['prompt']}
+
+This must be a complete, polished graphic-design flyer like a professional social
+media marketing agency would produce -- NOT a plain photo, NOT a bare background.
+Render ALL of the following text directly into the image, spelled EXACTLY as given,
+large, bold, and perfectly legible (this is the most important requirement -- every
+word and character must be spelled correctly, no gibberish, no garbled letters):
+
+{text_block}
+
+Compose it as a real finished flyer: strong visual hierarchy (the headline offer is
+the biggest element), high contrast so every line of text pops off the background,
+well-balanced whitespace, a cohesive color palette built from the school colors
+above, confident bold typography, and a scroll-stopping, premium look -- the kind
+of flyer a real business would pay a designer for. Absolutely no watermarks, no
+placeholder lorem-ipsum text, no misspelled or garbled words.
+"""
+
+
+def generate_full_flyer_ai(deal, variant):
+    prompt = build_full_flyer_prompt(deal, variant)
+    resp = client().images.generate(
+        model=IMAGE_MODEL,
+        prompt=prompt,
+        size=GEN_SIZE,
+        quality="high",
+        n=1,
+    )
+    img_bytes = base64.b64decode(resp.data[0].b64_json)
+    img = Image.open(BytesIO(img_bytes)).convert("RGB")
+    return crop_to_final(img)
+
+
+def _generate_one_option(deal, variant, force_placeholder):
+    if config.OPENAI_API_KEY and not force_placeholder:
+        try:
+            img = generate_full_flyer_ai(deal, variant)
+        except Exception as e:
+            print(f"    !! full-flyer generation failed for style '{variant['name']}' ({e}); "
+                  f"falling back to placeholder composite")
+            img = compose_flyer(deal, generate_placeholder_background(deal, variant_seed=variant["name"]))
+    else:
+        img = compose_flyer(deal, generate_placeholder_background(deal, variant_seed=variant["name"]))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def generate_flyer_options(deal, n_options=5, force_placeholder=False):
+    """Generate `n_options` distinct finished-flyer images for one deal, in
+    parallel, plus one shared caption. Returns
+    [{"image_b64": ..., "caption": ..., "style": ...}, ...]. Used by the
+    dashboard's 'Generate' button (via server.py's /api/generate)."""
+    variants = (STYLE_VARIANTS * ((n_options // len(STYLE_VARIANTS)) + 1))[:n_options]
+    caption = get_caption(deal)
+
+    with ThreadPoolExecutor(max_workers=min(n_options, 5)) as ex:
+        futures = [ex.submit(_generate_one_option, deal, v, force_placeholder) for v in variants]
+        images_b64 = [f.result() for f in futures]
+
+    return [
+        {"image_b64": img_b64, "caption": caption, "style": v["name"]}
+        for img_b64, v in zip(images_b64, variants)
+    ]
 
 
 # ---------------------------------------------------------------------------

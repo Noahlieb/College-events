@@ -11,7 +11,7 @@ alongside it (`packages/`, `apps/`).
 
 ```
 SCRAPE (Apify) → FILTER (dedup + noise) → APPROVE (local HTML dashboard) →
-GENERATE (AI art + Pillow text overlay + caption) → OUTPUT (output/<campus>/)
+GENERATE (AI-generated finished flyers + caption) → OUTPUT (output/<campus>/)
 ```
 
 ## Setup
@@ -162,18 +162,51 @@ Adapted from the original `ig_deals_filter.py`, plus:
 
 ### Stage 3 — deal_approval.html
 
-Open it directly in a browser (no server needed — it loads
-`data/deals_data.js` via a plain `<script src>` tag, which works over
+Open it directly in a browser (no server needed for approve/skip/export — it
+loads `data/deals_data.js` via a plain `<script src>` tag, which works over
 `file://`). Approve or skip each deal; decisions persist in that browser's
 `localStorage`. The square thumbnails are a **quick preview only** — the
 real 1080×1350 IG flyer comes from Stage 4. Click **Export
 approved_deals.json**, then move the downloaded file into this project
-folder (overwriting the placeholder) before running Stage 4.
+folder (overwriting the placeholder) before running Stage 4 from the CLI —
+or skip the export entirely and use the in-browser **✨ Generate** button
+described below.
+
+**In-browser flyer generation** — on any card in the **Approved posts** tab,
+click **✨ Generate** to get 5 finished, ready-to-post flyer options right in
+the dashboard, each in a different visual style, plus one caption; click
+**Use this one** under whichever option looks best to save it straight to
+`output/<campus>/<business>.png`/`.txt`. This needs `OPENAI_API_KEY` kept
+server-side, so it only works when the page is served by the included local
+server rather than opened as a bare file:
+
+```bash
+python3 server.py
+# open http://localhost:5000/ instead of double-clicking deal_approval.html
+```
+
+Everything else (approve/skip/export/reset) behaves identically either way.
+Opening the Generate modal over `file://` shows a message telling you to
+start the server instead of silently failing.
 
 ### Stage 4 — generate_flyers.py
 
-Per the task's own text-accuracy warning, this never asks the image model to
-render deal text:
+Two flyer-generation paths live here, serving different needs:
+
+**Full AI flyers (the in-browser Generate button, `generate_flyer_options()`)**
+— asks `gpt-image-1` to render a complete, finished flyer directly, including
+the deal's exact text (business, offer, detail, code, CTA), in one of 5
+distinct `STYLE_VARIANTS` (bold sticker-collage, clean editorial, retro
+halftone comic, neon nightlife, varsity/letterman) so repeated posts don't
+look like copies of one template. Five options are generated in parallel
+(`ThreadPoolExecutor`) per click, alongside one shared caption from a short
+LLM call. Modern image models render text far better than when this project
+started, but verify every option's spelling before posting — nothing here
+guarantees pixel-perfect text the way the CLI path below does.
+
+**Background + Pillow composite (the CLI, `python generate_flyers.py`)** —
+kept as the exact-text-guaranteed path and as the free offline fallback used
+by both paths when `OPENAI_API_KEY` isn't set:
 
 1. OpenAI (`gpt-image-1`) generates **background artwork only** — campus
    colors, mascot motif, confetti/brush-stroke style, explicit instruction to
@@ -184,17 +217,21 @@ render deal text:
 3. A short LLM call writes the caption (hook, deal details, code, hashtags,
    "send this to your group chat" CTA).
 
-Without `OPENAI_API_KEY` set, both steps still run — background art falls
-back to a campus-brand gradient and captions fall back to a template — so you
-can test/tune the Pillow layout for free. Add the key and it automatically
-switches to real AI art + LLM captions.
+Without `OPENAI_API_KEY` set, both paths still run end-to-end — full-flyer
+generation falls back to a campus-brand gradient + Pillow text composite (5
+slightly varied placeholders, so the UI still has something to click through)
+and captions fall back to a template. Add the key and everything automatically
+switches to real AI output. A failed full-flyer API call (rate limit, network)
+for one style falls back to the same composite for just that option rather
+than failing the whole batch.
 
 Drop matching `.ttf` files into `assets/fonts/` (e.g. `Anton-Regular.ttf`,
 `Inter-ExtraBold.ttf`, matching the approval dashboard's own fonts) for the
-flyer text to look identical to the preview. Falls back to system DejaVu Sans
-Bold otherwise, which is legible but generic. Campus logos go in
-`assets/logos/<CAMPUS>.png` (e.g. `assets/logos/FAU.png`) and are composited
-automatically if present.
+CLI/fallback path's flyer text to look identical to the preview. Falls back
+to system DejaVu Sans Bold otherwise, which is legible but generic. Campus
+logos go in `assets/logos/<CAMPUS>.png` (e.g. `assets/logos/FAU.png`) and are
+composited automatically if present (CLI/fallback path only — the full-AI
+path bakes branding into the generated image itself).
 
 ### Stage 5 — output
 
@@ -222,6 +259,7 @@ ig-deals-pipeline/
   activity.py             active/expired detection, used by filter_deals.py
   deal_approval.html     Stage 3
   generate_flyers.py     Stage 4
+  server.py               local Flask server for the in-browser Generate button (keeps OPENAI_API_KEY server-side)
   run_pipeline.py        one-command orchestration (scrape/filter/generate/refresh/demo)
   data/                  raw scrapes, filtered deals, dashboard data (gitignored)
   state/seen_posts.json  persistent dedup store — don't delete (gitignored)
