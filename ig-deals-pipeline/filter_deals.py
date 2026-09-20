@@ -37,7 +37,12 @@ import config
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
-MIN_DEAL_SCORE = 2  # sum of matched signal weights required to keep a post
+MIN_DEAL_SCORE = 0  # sum of matched signal weights required to keep a post
+# Kept at 0 on purpose: this is a search-results triage tool, not an
+# auto-reject filter. Pull every post the search/monitor actors return
+# (minus genuine wrong-school noise below) and let human review in the
+# dashboard be the actual deal/not-deal decision -- an aggressive score
+# threshold was silently dropping real deals before they were ever seen.
 
 DEAL_SIGNALS = [
     (re.compile(r"\b\d{1,3}\s?%\s?off\b", re.I), 3),
@@ -87,16 +92,22 @@ FLORIDA_HINT = re.compile(
 )
 
 
-def detect_noise(caption, location, hashtag_blob, queried_campus, detected_campus):
-    """Return a noise reason string, or None if the post looks legit."""
+def detect_noise(caption, location, hashtag_blob):
+    """Return a noise reason string, or None if the post looks legit.
+
+    Note: a post whose content clearly names a DIFFERENT tracked Florida
+    campus than the one queried is not noise -- it's a real deal for that
+    other campus that a broad keyword search happened to surface. It gets
+    routed to the campus its content actually names (see process() below)
+    rather than dropped. Only content that isn't about any tracked Florida
+    campus at all (the German FAU, or generic off-topic German content) is
+    filtered here."""
     blob = f"{caption or ''} {location or ''} {hashtag_blob or ''}"
     if GERMAN_UNIVERSITY_TERMS.search(blob):
         return "german_university"
     german_hits = len(GERMAN_STOPWORDS.findall(blob))
     if german_hits >= 3 and not FLORIDA_HINT.search(blob):
         return "german_language"
-    if queried_campus and detected_campus not in ("UNMATCHED", queried_campus):
-        return "wrong_campus_for_query"
     return None
 
 
@@ -248,7 +259,7 @@ def process(posts):
             continue
 
         detected = detect_campus_by_content(caption, hashtag_blob, location)
-        noise = detect_noise(caption, location, hashtag_blob, queried_campus, detected)
+        noise = detect_noise(caption, location, hashtag_blob)
         if noise:
             skipped_noise[noise] = skipped_noise.get(noise, 0) + 1
             continue

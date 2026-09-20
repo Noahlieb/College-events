@@ -206,5 +206,22 @@
     "url": "https://www.instagram.com/p/ObjLocation1/",
     "_campus_queried": "FAU",
     "_source": "discovery"
+  },
+  {
+    "id": "3300000000013",
+    "shortCode": "UMiamiMisroute1",
+    "caption": "UMiami students, stop paying full price! From food to sweet treats, these spots around Miami offer deals.",
+    "ownerUsername": "umiami.events",
+    "ownerFullName": "UMiami Events",
+    "locationName": "Coral Gables, Florida",
+    "hashtags": [
+      "UMiami",
+      "Miami"
+    ],
+    "timestamp": "2026-09-15T15:54:53.000Z",
+    "likesCount": 20,
+    "url": "https://www.instagram.com/p/UMiamiMisroute1/",
+    "_campus_queried": "FAU",
+    "_source": "discovery"
   }
 ]

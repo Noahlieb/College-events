@@ -134,7 +134,8 @@ CAMPUS = {
         "emoji": "🌀",
         "chant": "Go Canes",
         "label": "UM DEALS",
-        "campus_patterns": [r"\bum\b", r"university of miami", r"\bhurricanes\b", r"\bcanes\b", r"coral gables"],
+        "campus_patterns": [r"\bum\b", r"\bumiami\b", r"university of miami", r"\bhurricanes\b",
+                            r"\bcanes\b", r"coral gables"],
         "location_terms": ["coral gables", "miami", "florida"],
         "deal_accounts": [],  # TODO: add University of Miami deal-account handles
         "search_queries": ["University of Miami", "University of Miami deals", "Miami Hurricanes deals",
