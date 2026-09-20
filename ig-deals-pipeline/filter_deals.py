@@ -395,6 +395,19 @@ def backfill_activity(d):
         d["expires_on"] = info["expires_on"]
         d["activity_note"] = info["note"]
     d.setdefault("image_url", "")
+
+    # Same self-heal reasoning, for campus routing: a fix to
+    # detect_campus_by_content() (e.g. weighting a real address over an
+    # incidental cross-campus hashtag) never touches an already-cached
+    # record, since it's never run through process() again. Only caption +
+    # meta are available here (not the original raw hashtags/location), so
+    # this only overrides when the recomputed campus is a confident, DIFFERENT
+    # real match -- it never downgrades an already-correct campus to
+    # UNMATCHED just because the cached record has less to go on than the
+    # original raw post did.
+    recomputed = detect_campus_by_content(d.get("caption", ""), "", d.get("meta", ""))
+    if recomputed != "UNMATCHED" and recomputed != d.get("campus"):
+        d["campus"] = recomputed
     return d
 
 
