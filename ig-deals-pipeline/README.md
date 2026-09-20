@@ -63,10 +63,14 @@ python3 run_pipeline.py refresh
 Two Apify Actors, run separately because they do different jobs:
 
 - **Discovery** — `data-slayer/instagram-keyword-posts-scraper`. Keyword/
-  caption search per campus (`config.py` → `search_queries`), input
-  `{"searchQueries": [...], "maxResultsPerQuery": N}`. No login needed;
-  returns full captions, username, likes, image URL. This is what finds
-  deal-posting businesses you don't already follow.
+  caption search per campus, input `{"searchQueries": [...],
+  "maxResultsPerQuery": N}`. No login needed; returns full captions,
+  username, likes, image URL. This is what finds deal-posting businesses you
+  don't already follow. `config.py`'s `gen_queries()` generates each
+  campus's query list from its name(s) crossed with a shared suffix template
+  (bare name, "discount", "deals", "food", "student discount", ...) plus a
+  couple of campus-specific extras — see `QUERY_SUFFIXES` in `config.py` to
+  add more categories across all six campuses at once.
 - **Monitoring** — `apify/instagram-scraper`. `directUrls` of each campus's
   known deal accounts, `resultsType: "posts"`, `resultsLimit`,
   `onlyPostsNewerThan` (default 2 days, `MONITOR_LOOKBACK` in `.env`) so
