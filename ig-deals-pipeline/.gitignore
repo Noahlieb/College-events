@@ -1,0 +1,14 @@
+.env
+data/raw/
+data/deals_clean.json
+data/deals_clean.csv
+data/deals_data.js
+state/seen_posts.json
+approved_deals.json
+output/
+flyers/
+logs/
+__pycache__/
+*.pyc
+.venv/
+venv/
