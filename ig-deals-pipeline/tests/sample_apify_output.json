@@ -6,7 +6,11 @@
     "ownerUsername": "faudining",
     "ownerFullName": "FAU Dining",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "BocaRaton", "studentdiscount"],
+    "hashtags": [
+      "FAU",
+      "BocaRaton",
+      "studentdiscount"
+    ],
     "timestamp": "2026-09-18T14:00:00.000Z",
     "likesCount": 210,
     "url": "https://www.instagram.com/p/DcRSZ5ExLML/",
@@ -20,7 +24,10 @@
     "ownerUsername": "fau_owlperks",
     "ownerFullName": "FAU Owl Perks",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "OwlPerks"],
+    "hashtags": [
+      "FAU",
+      "OwlPerks"
+    ],
     "timestamp": "2026-09-17T10:00:00.000Z",
     "likesCount": 88,
     "url": "https://www.instagram.com/p/DVl4JAsESUv/",
@@ -34,7 +41,10 @@
     "ownerUsername": "fau.events",
     "ownerFullName": "FAU Events",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "GoOwls"],
+    "hashtags": [
+      "FAU",
+      "GoOwls"
+    ],
     "timestamp": "2026-09-16T09:00:00.000Z",
     "likesCount": 340,
     "url": "https://www.instagram.com/p/Ddg1wx1xQ5x/",
@@ -44,11 +54,13 @@
   {
     "id": "3300000000004",
     "shortCode": "DWCB9U2lYdc",
-    "caption": "25% off memberships at [solidcore] Boca — or 4 classes for $59. Show your Owl Card for the student discount. #FAU",
+    "caption": "25% off memberships at [solidcore] Boca \u2014 or 4 classes for $59. Show your Owl Card for the student discount. #FAU",
     "ownerUsername": "fau_owlperks",
     "ownerFullName": "FAU Owl Perks",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU"],
+    "hashtags": [
+      "FAU"
+    ],
     "timestamp": "2026-09-15T12:00:00.000Z",
     "likesCount": 150,
     "url": "https://www.instagram.com/p/DWCB9U2lYdc/",
@@ -62,7 +74,10 @@
     "ownerUsername": "sgatfau",
     "ownerFullName": "SGA at FAU",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "SGA"],
+    "hashtags": [
+      "FAU",
+      "SGA"
+    ],
     "timestamp": "2026-09-14T08:00:00.000Z",
     "likesCount": 500,
     "url": "https://www.instagram.com/p/DcRxDsAuFQ9/",
@@ -76,7 +91,9 @@
     "ownerUsername": "fau.events",
     "ownerFullName": "FAU Events",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU"],
+    "hashtags": [
+      "FAU"
+    ],
     "timestamp": "2026-09-19T09:00:00.000Z",
     "likesCount": 275,
     "url": "https://www.instagram.com/p/DdbfRwLx0pA/",
@@ -88,9 +105,13 @@
     "shortCode": "GermanFau0001",
     "caption": "Die Friedrich-Alexander-Universitaet Erlangen-Nuernberg laedt Studenten ein: 20% off in der Mensa diese Woche! Nicht verpassen.",
     "ownerUsername": "fau.erlangen.official",
-    "ownerFullName": "FAU Erlangen-Nürnberg",
+    "ownerFullName": "FAU Erlangen-N\u00fcrnberg",
     "locationName": "Erlangen, Germany",
-    "hashtags": ["FAU", "Erlangen", "Studentenrabatt"],
+    "hashtags": [
+      "FAU",
+      "Erlangen",
+      "Studentenrabatt"
+    ],
     "timestamp": "2026-09-18T08:00:00.000Z",
     "likesCount": 40,
     "url": "https://www.instagram.com/p/GermanFau0001/",
@@ -104,7 +125,10 @@
     "ownerUsername": "random_fl_deals_page",
     "ownerFullName": "Florida Student Deals",
     "locationName": "Tallahassee, Florida",
-    "hashtags": ["FSU", "Tallahassee"],
+    "hashtags": [
+      "FSU",
+      "Tallahassee"
+    ],
     "timestamp": "2026-09-18T11:00:00.000Z",
     "likesCount": 60,
     "url": "https://www.instagram.com/p/WrongCampus01/",
@@ -118,7 +142,10 @@
     "ownerUsername": "random_student_22",
     "ownerFullName": "Just a Student",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "BocaRaton"],
+    "hashtags": [
+      "FAU",
+      "BocaRaton"
+    ],
     "timestamp": "2026-09-18T20:00:00.000Z",
     "likesCount": 12,
     "url": "https://www.instagram.com/p/NotADeal0001/",
@@ -132,7 +159,10 @@
     "ownerUsername": "boca_deal_hunters",
     "ownerFullName": "Boca Deal Hunters",
     "locationName": "Boca Raton, Florida",
-    "hashtags": ["FAU", "Repost"],
+    "hashtags": [
+      "FAU",
+      "Repost"
+    ],
     "timestamp": "2026-09-16T15:00:00.000Z",
     "likesCount": 95,
     "url": "https://www.instagram.com/p/RepostOfPizza1/",
@@ -150,6 +180,30 @@
     "timestamp": "2026-09-19T13:00:00.000Z",
     "likesCount": 30,
     "url": "https://www.instagram.com/p/Unmatched0001/",
+    "_campus_queried": "FAU",
+    "_source": "discovery"
+  },
+  {
+    "id": "3300000000012",
+    "shortCode": "ObjLocation1",
+    "caption": "25% off at Campus Bites for FAU students with a valid Owl Card this week!",
+    "ownerUsername": "campusbites_fau",
+    "ownerFullName": "Campus Bites",
+    "location": {
+      "id": "987654",
+      "name": "Boca Raton, Florida"
+    },
+    "hashtags": [
+      {
+        "name": "FAU"
+      },
+      {
+        "name": "BocaRaton"
+      }
+    ],
+    "timestamp": "2026-09-20T12:00:00.000Z",
+    "likesCount": 42,
+    "url": "https://www.instagram.com/p/ObjLocation1/",
     "_campus_queried": "FAU",
     "_source": "discovery"
   }

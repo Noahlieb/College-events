@@ -121,6 +121,24 @@ def get(post, *keys, default=""):
     return default
 
 
+def stringify(value):
+    """Coerce a post field down to a plain string. Real Apify actor output is
+    inconsistent here -- e.g. `location` sometimes comes back as a nested
+    object ({"name": "Boca Raton, Florida", "id": ...}) instead of a flat
+    string, and `hashtags` sometimes as a list of such objects instead of a
+    list of strings. Every downstream text-blob builder assumes plain
+    strings, so every raw field is funneled through this first."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return stringify(value.get("name") or value.get("id") or "")
+    if isinstance(value, list):
+        return " ".join(stringify(v) for v in value if v)
+    return str(value)
+
+
 def normalize(text):
     text = unicodedata.normalize("NFKD", text or "")
     text = EMOJI_AND_SYMBOLS.sub(" ", text.lower())
@@ -218,10 +236,9 @@ def process(posts):
     for post in posts:
         pid = str(get(post, "id", "postId", "pk", default=""))
         shortcode = get(post, "shortCode", "shortcode", "code")
-        caption = get(post, "caption", "text", "captionText")
-        location = get(post, "locationName", "location")
-        hashtags = get(post, "hashtags", default=[])
-        hashtag_blob = " ".join(hashtags) if isinstance(hashtags, list) else str(hashtags)
+        caption = stringify(get(post, "caption", "text", "captionText"))
+        location = stringify(get(post, "locationName", "location"))
+        hashtag_blob = stringify(get(post, "hashtags", default=[]))
         source_account = str(get(post, "ownerUsername", "username")).lower()
         queried_campus = post.get("_campus_queried")
 
@@ -247,7 +264,7 @@ def process(posts):
             skipped_dupe += 1
             continue
 
-        business = extract_business(caption, get(post, "ownerFullName", "ownerUsername", "username", "owner"))
+        business = extract_business(caption, stringify(get(post, "ownerFullName", "ownerUsername", "username", "owner")))
         addr = RE_ADDRESS.search(caption or "")
         code = RE_CODE.search(caption or "")
         discount = extract_discount(caption)
